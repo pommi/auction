@@ -5,9 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/cloudfoundry-incubator/auction/communication/http/auction_http_client"
 
 	"github.com/cloudfoundry-incubator/auction/auctionrep"
 	"github.com/cloudfoundry-incubator/auction/auctionrunner"
@@ -34,9 +37,10 @@ var auctioneerMode string
 
 const InProcess = "inprocess"
 const NATS = "nats"
-const RemoteAuctioneerMode = "remote"
+const HTTP = "http"
+const ExternalAuctioneerMode = "external"
 
-const numAuctioneers = 10
+const numAuctioneers = 100
 const numReps = 100
 const LatencyMin = 1 * time.Millisecond
 const LatencyMax = 2 * time.Millisecond
@@ -64,8 +68,8 @@ var reportName string
 var disableSVGReport bool
 
 func init() {
-	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess or nats")
-	flag.StringVar(&auctioneerMode, "auctioneerMode", "inprocess", "one of inprocess or remote")
+	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess, nats, or http")
+	flag.StringVar(&auctioneerMode, "auctioneerMode", "inprocess", "one of inprocess or external")
 	flag.DurationVar(&timeout, "timeout", time.Second, "timeout when waiting for responses from remote calls")
 
 	flag.StringVar(&(auctionrunner.DefaultStartAuctionRules.Algorithm), "algorithm", auctionrunner.DefaultStartAuctionRules.Algorithm, "the auction algorithm to use")
@@ -95,8 +99,8 @@ var _ = BeforeSuite(func() {
 	switch communicationMode {
 	case InProcess:
 		client, repGuids = buildInProcessReps()
-		if auctioneerMode == RemoteAuctioneerMode {
-			panic("it doesn't make sense to use remote auctioneers when the reps are in-process")
+		if auctioneerMode == ExternalAuctioneerMode {
+			panic("it doesn't make sense to use external auctioneers when the reps are in-process")
 		}
 	case NATS:
 		natsAddrs := startNATS()
@@ -107,17 +111,31 @@ var _ = BeforeSuite(func() {
 
 		client, err = auction_nats_client.New(natsRunner.MessageBus, timeout, natsLogger)
 		Ω(err).ShouldNot(HaveOccurred())
-		repGuids = launchExternalReps("-natsAddrs", natsAddrs)
-		if auctioneerMode == RemoteAuctioneerMode {
-			hosts = launchExternalAuctioneers("-natsAddrs", natsAddrs)
+		repGuids = launchExternalNATSReps(natsAddrs)
+		if auctioneerMode == ExternalAuctioneerMode {
+			hosts = launchExternalNATSAuctioneers(natsAddrs)
 		}
+	case HTTP:
+		httpLogger := lager.NewLogger("test")
+		httpLogger.RegisterSink(lager.NewWriterSink(GinkgoWriter, lager.DEBUG))
+
+		var addressLookupTable map[string]string
+		repGuids, addressLookupTable = launchExternalHTTPReps()
+
+		addressLookup := auction_http_client.AddressLookupFromMap(addressLookupTable)
+
+		client = auction_http_client.New(http.DefaultClient, httpLogger, addressLookup)
+		if auctioneerMode == ExternalAuctioneerMode {
+			hosts = launchExternalHTTPAuctioneers(addressLookupTable)
+		}
+
 	default:
 		panic(fmt.Sprintf("unknown communication mode: %s", communicationMode))
 	}
 
 	if auctioneerMode == InProcess {
 		auctionDistributor = auctiondistributor.NewInProcessAuctionDistributor(client)
-	} else if auctioneerMode == RemoteAuctioneerMode {
+	} else if auctioneerMode == ExternalAuctioneerMode {
 		auctionDistributor = auctiondistributor.NewRemoteAuctionDistributor(hosts, client)
 	}
 })
@@ -134,6 +152,7 @@ var _ = AfterSuite(func() {
 	if !disableSVGReport {
 		finishReport()
 	}
+
 	for _, sess := range sessionsToTerminate {
 		sess.Kill().Wait()
 	}
@@ -170,7 +189,7 @@ func startNATS() string {
 	return strings.Join(natsAddrs, ",")
 }
 
-func launchExternalReps(communicationFlag string, communicationValue string) []string {
+func launchExternalNATSReps(natsAddrs string) []string {
 	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/repnode")
 	Ω(err).ShouldNot(HaveOccurred())
 
@@ -182,7 +201,7 @@ func launchExternalReps(communicationFlag string, communicationValue string) []s
 		serverCmd := exec.Command(
 			repNodeBinary,
 			"-repGuid", repGuid,
-			communicationFlag, communicationValue,
+			"-natsAddrs", natsAddrs,
 			"-memoryMB", fmt.Sprintf("%d", repResources.MemoryMB),
 			"-diskMB", fmt.Sprintf("%d", repResources.DiskMB),
 			"-containers", fmt.Sprintf("%d", repResources.Containers),
@@ -199,7 +218,39 @@ func launchExternalReps(communicationFlag string, communicationValue string) []s
 	return repGuids
 }
 
-func launchExternalAuctioneers(communicationFlag string, communicationValue string) []string {
+func launchExternalHTTPReps() ([]string, map[string]string) {
+	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/repnode")
+	Ω(err).ShouldNot(HaveOccurred())
+
+	repGuids := []string{}
+	addressLookupTable := map[string]string{}
+
+	for i := 0; i < numReps; i++ {
+		repGuid := util.NewGuid("REP")
+		httpAddr := fmt.Sprintf("127.0.0.1:%d", 30000+i)
+
+		serverCmd := exec.Command(
+			repNodeBinary,
+			"-repGuid", repGuid,
+			"-httpAddr", httpAddr,
+			"-memoryMB", fmt.Sprintf("%d", repResources.MemoryMB),
+			"-diskMB", fmt.Sprintf("%d", repResources.DiskMB),
+			"-containers", fmt.Sprintf("%d", repResources.Containers),
+		)
+
+		sess, err := gexec.Start(serverCmd, GinkgoWriter, GinkgoWriter)
+		Ω(err).ShouldNot(HaveOccurred())
+		sessionsToTerminate = append(sessionsToTerminate, sess)
+		Eventually(sess, 5).Should(gbytes.Say("listening"))
+
+		repGuids = append(repGuids, repGuid)
+		addressLookupTable[repGuid] = "http://" + httpAddr
+	}
+
+	return repGuids, addressLookupTable
+}
+
+func launchExternalNATSAuctioneers(natsAddrs string) []string {
 	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/auctioneernode")
 	Ω(err).ShouldNot(HaveOccurred())
 
@@ -208,7 +259,34 @@ func launchExternalAuctioneers(communicationFlag string, communicationValue stri
 		port := 48710 + i
 		auctioneerCmd := exec.Command(
 			auctioneerNodeBinary,
-			communicationFlag, communicationValue,
+			"-natsAddrs", natsAddrs,
+			"-timeout", fmt.Sprintf("%s", timeout),
+			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
+		)
+		auctioneerHosts = append(auctioneerHosts, fmt.Sprintf("127.0.0.1:%d", port))
+
+		sess, err := gexec.Start(auctioneerCmd, GinkgoWriter, GinkgoWriter)
+		Ω(err).ShouldNot(HaveOccurred())
+		Eventually(sess).Should(gbytes.Say("auctioneering"))
+		sessionsToTerminate = append(sessionsToTerminate, sess)
+	}
+
+	return auctioneerHosts
+}
+
+func launchExternalHTTPAuctioneers(addressLookupTable map[string]string) []string {
+	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/auctioneernode")
+	Ω(err).ShouldNot(HaveOccurred())
+
+	encodedAddressLookupTable, err := json.Marshal(addressLookupTable)
+	Ω(err).ShouldNot(HaveOccurred())
+
+	auctioneerHosts := []string{}
+	for i := 0; i < numAuctioneers; i++ {
+		port := 48710 + i
+		auctioneerCmd := exec.Command(
+			auctioneerNodeBinary,
+			"-httpLookup", string(encodedAddressLookupTable),
 			"-timeout", fmt.Sprintf("%s", timeout),
 			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
 		)

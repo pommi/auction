@@ -3,6 +3,7 @@ package auction_http_client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -19,6 +20,16 @@ type AuctionHTTPClient struct {
 }
 
 type AddressLookup func(string) (string, error)
+
+func AddressLookupFromMap(lookupTable map[string]string) AddressLookup {
+	return func(repGuid string) (string, error) {
+		address, ok := lookupTable[repGuid]
+		if !ok {
+			return "", errors.New("couldn't find address for " + repGuid)
+		}
+		return address, nil
+	}
+}
 
 type Response struct {
 	Body []byte

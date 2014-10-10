@@ -5,21 +5,26 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
-	"github.com/cloudfoundry-incubator/auction/util"
 )
 
 type httpRemoteAuctions struct {
-	hosts []string
+	hosts   []string
+	counter uint64
 }
 
 func newHttpRemoteAuctions(hosts []string) *httpRemoteAuctions {
-	return &httpRemoteAuctions{hosts}
+	return &httpRemoteAuctions{
+		hosts:   hosts,
+		counter: 0,
+	}
 }
 
 func (h *httpRemoteAuctions) RemoteStartAuction(auctionRequest auctiontypes.StartAuctionRequest) (auctiontypes.StartAuctionResult, error) {
-	host := h.hosts[util.R.Intn(len(h.hosts))]
+	index := atomic.AddUint64(&(h.counter), 1) - 1
+	host := h.hosts[int(index)%len(h.hosts)]
 
 	payload, _ := json.Marshal(auctionRequest)
 	res, err := http.Post("http://"+host+"/start-auction", "application/json", bytes.NewReader(payload))
@@ -40,7 +45,8 @@ func (h *httpRemoteAuctions) RemoteStartAuction(auctionRequest auctiontypes.Star
 }
 
 func (h *httpRemoteAuctions) RemoteStopAuction(auctionRequest auctiontypes.StopAuctionRequest) (auctiontypes.StopAuctionResult, error) {
-	host := h.hosts[util.R.Intn(len(h.hosts))]
+	index := atomic.AddUint64(&(h.counter), 1) - 1
+	host := h.hosts[int(index)%len(h.hosts)]
 
 	payload, _ := json.Marshal(auctionRequest)
 	res, err := http.Post("http://"+host+"/stop-auction", "application/json", bytes.NewReader(payload))

@@ -155,7 +155,7 @@ var _ = Describe("Auction", func() {
 			}
 		})
 
-		Context("Imbalanced scenario (e.g. a deploy)", func() {
+		FContext("Imbalanced scenario (e.g. a deploy)", func() {
 			nexecutors := []int{100, 100}
 			nempty := []int{5, 1}
 			napps := []int{500, 100}

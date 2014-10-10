@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudfoundry-incubator/auction/communication/http/auction_http_client"
+
 	"github.com/cloudfoundry-incubator/auction/auctionrunner"
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
 	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_client"
@@ -18,17 +20,21 @@ import (
 )
 
 var natsAddrs = flag.String("natsAddrs", "", "nats server addresses")
+var httpLookup = flag.String("httpLookup", "", "http lookup table")
 var timeout = flag.Duration("timeout", time.Second, "timeout for nats responses")
-var maxConcurrent = flag.Int("maxConcurrent", 1000, "number of concurrent auctions to hold")
-var httpAddr = flag.String("httpAddr", "0.0.0.0:48710", "http address to listen on")
+var httpAddr = flag.String("httpAddr", "", "http address to listen on")
 
 var errorResponse = []byte("error")
 
 func main() {
 	flag.Parse()
 
-	if *natsAddrs == "" {
-		panic("need nats addr")
+	if *natsAddrs == "" && *httpLookup == "" {
+		panic("need nats addr or http lookup table")
+	}
+
+	if *natsAddrs != "" && *httpLookup != "" {
+		panic("choose one: nats communication or http communication")
 	}
 
 	if *httpAddr == "" {
@@ -37,32 +43,40 @@ func main() {
 
 	var repClient auctiontypes.RepPoolClient
 
-	natsMembers := []string{}
-	for _, addr := range strings.Split(*natsAddrs, ",") {
-		uri := url.URL{
-			Scheme: "nats",
-			Host:   addr,
+	if *natsAddrs != "" {
+		natsMembers := []string{}
+		for _, addr := range strings.Split(*natsAddrs, ",") {
+			uri := url.URL{
+				Scheme: "nats",
+				Host:   addr,
+			}
+			natsMembers = append(natsMembers, uri.String())
 		}
-		natsMembers = append(natsMembers, uri.String())
-	}
-	client, err := yagnats.Connect(natsMembers)
-	if err != nil {
-		log.Fatalln("no nats:", err)
+		client, err := yagnats.Connect(natsMembers)
+		if err != nil {
+			log.Fatalln("no nats:", err)
+		}
+
+		repClient, err = auction_nats_client.New(client, *timeout, cf_lager.New("auctioneer-nats"))
+		if err != nil {
+			log.Fatalln("no rep client:", err)
+		}
 	}
 
-	repClient, err = auction_nats_client.New(client, *timeout, cf_lager.New("simulation"))
-	if err != nil {
-		log.Fatalln("no rep client:", err)
-	}
+	if *httpLookup != "" {
+		lookupTable := map[string]string{}
+		err := json.Unmarshal([]byte(*httpLookup), &lookupTable)
+		if err != nil {
+			log.Fatalln("couldn't parse lookup table:", err)
+		}
 
-	semaphore := make(chan bool, *maxConcurrent)
+		addressLookup := auction_http_client.AddressLookupFromMap(lookupTable)
+		repClient = auction_http_client.New(&http.Client{
+			Timeout: *timeout,
+		}, cf_lager.New("auctioneer-http"), addressLookup)
+	}
 
 	http.HandleFunc("/start-auction", func(w http.ResponseWriter, r *http.Request) {
-		semaphore <- true
-		defer func() {
-			<-semaphore
-		}()
-
 		var auctionRequest auctiontypes.StartAuctionRequest
 		err := json.NewDecoder(r.Body).Decode(&auctionRequest)
 		if err != nil {
@@ -77,11 +91,6 @@ func main() {
 	})
 
 	http.HandleFunc("/stop-auction", func(w http.ResponseWriter, r *http.Request) {
-		semaphore <- true
-		defer func() {
-			<-semaphore
-		}()
-
 		var auctionRequest auctiontypes.StopAuctionRequest
 		err := json.NewDecoder(r.Body).Decode(&auctionRequest)
 		if err != nil {
