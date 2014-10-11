@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/cloudfoundry-incubator/auction/communication/http/auction_http_client"
 
@@ -38,6 +39,7 @@ var auctioneerMode string
 const InProcess = "inprocess"
 const NATS = "nats"
 const HTTP = "http"
+const DiegoCommunicationMode = "diego"
 const ExternalAuctioneerMode = "external"
 
 const numAuctioneers = 100
@@ -68,7 +70,7 @@ var reportName string
 var disableSVGReport bool
 
 func init() {
-	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess, nats, or http")
+	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess, nats, http, or diego")
 	flag.StringVar(&auctioneerMode, "auctioneerMode", "inprocess", "one of inprocess or external")
 	flag.DurationVar(&timeout, "timeout", time.Second, "timeout when waiting for responses from remote calls")
 
@@ -94,6 +96,9 @@ var _ = BeforeSuite(func() {
 
 	startReport()
 
+	logger := lager.NewLogger("auction-sim")
+	logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, lager.DEBUG))
+
 	sessionsToTerminate = []*gexec.Session{}
 	hosts := []string{}
 	switch communicationMode {
@@ -106,29 +111,34 @@ var _ = BeforeSuite(func() {
 		natsAddrs := startNATS()
 		var err error
 
-		natsLogger := lager.NewLogger("test")
-		natsLogger.RegisterSink(lager.NewWriterSink(GinkgoWriter, lager.DEBUG))
-
-		client, err = auction_nats_client.New(natsRunner.MessageBus, timeout, natsLogger)
+		client, err = auction_nats_client.New(natsRunner.MessageBus, timeout, logger)
 		Ω(err).ShouldNot(HaveOccurred())
 		repGuids = launchExternalNATSReps(natsAddrs)
 		if auctioneerMode == ExternalAuctioneerMode {
 			hosts = launchExternalNATSAuctioneers(natsAddrs)
 		}
 	case HTTP:
-		httpLogger := lager.NewLogger("test")
-		httpLogger.RegisterSink(lager.NewWriterSink(GinkgoWriter, lager.DEBUG))
-
 		var addressLookupTable map[string]string
 		repGuids, addressLookupTable = launchExternalHTTPReps()
 
 		addressLookup := auction_http_client.AddressLookupFromMap(addressLookupTable)
 
-		client = auction_http_client.New(http.DefaultClient, httpLogger, addressLookup)
+		client = auction_http_client.New(http.DefaultClient, logger, addressLookup)
 		if auctioneerMode == ExternalAuctioneerMode {
 			hosts = launchExternalHTTPAuctioneers(addressLookupTable)
 		}
-
+	case DiegoCommunicationMode:
+		repGuids = []string{}
+		for i := 1; i <= 100; i++ {
+			repGuids = append(repGuids, fmt.Sprintf("rep-lite-%d", i))
+		}
+		addressLookup := func(repGuid string) (string, error) {
+			return fmt.Sprintf("http://%s.diego-2.cf-app.com", repGuid), nil
+		}
+		for i := 1; i <= 100; i++ {
+			hosts = append(hosts, fmt.Sprintf("auctioneer-lite-%d.diego-2.cf-app.com", i))
+		}
+		client = auction_http_client.New(http.DefaultClient, logger, addressLookup)
 	default:
 		panic(fmt.Sprintf("unknown communication mode: %s", communicationMode))
 	}
@@ -141,9 +151,17 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = BeforeEach(func() {
+	wg := &sync.WaitGroup{}
+	wg.Add(len(repGuids))
 	for _, repGuid := range repGuids {
-		client.Reset(repGuid)
+		repGuid := repGuid
+		go func() {
+			client.Reset(repGuid)
+			wg.Done()
+		}()
 	}
+
+	wg.Wait()
 
 	util.ResetGuids()
 })
@@ -190,7 +208,7 @@ func startNATS() string {
 }
 
 func launchExternalNATSReps(natsAddrs string) []string {
-	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/repnode")
+	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/repnode")
 	Ω(err).ShouldNot(HaveOccurred())
 
 	repGuids := []string{}
@@ -219,7 +237,7 @@ func launchExternalNATSReps(natsAddrs string) []string {
 }
 
 func launchExternalHTTPReps() ([]string, map[string]string) {
-	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/repnode")
+	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/repnode")
 	Ω(err).ShouldNot(HaveOccurred())
 
 	repGuids := []string{}
@@ -241,7 +259,7 @@ func launchExternalHTTPReps() ([]string, map[string]string) {
 		sess, err := gexec.Start(serverCmd, GinkgoWriter, GinkgoWriter)
 		Ω(err).ShouldNot(HaveOccurred())
 		sessionsToTerminate = append(sessionsToTerminate, sess)
-		Eventually(sess, 5).Should(gbytes.Say("listening"))
+		Eventually(sess).Should(gbytes.Say("listening"))
 
 		repGuids = append(repGuids, repGuid)
 		addressLookupTable[repGuid] = "http://" + httpAddr
@@ -251,7 +269,7 @@ func launchExternalHTTPReps() ([]string, map[string]string) {
 }
 
 func launchExternalNATSAuctioneers(natsAddrs string) []string {
-	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/auctioneernode")
+	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/auctioneernode")
 	Ω(err).ShouldNot(HaveOccurred())
 
 	auctioneerHosts := []string{}
@@ -275,7 +293,7 @@ func launchExternalNATSAuctioneers(natsAddrs string) []string {
 }
 
 func launchExternalHTTPAuctioneers(addressLookupTable map[string]string) []string {
-	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/auctioneernode")
+	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/auctioneernode")
 	Ω(err).ShouldNot(HaveOccurred())
 
 	encodedAddressLookupTable, err := json.Marshal(addressLookupTable)
