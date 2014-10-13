@@ -34,7 +34,7 @@ func lagerDataForStartAuctionInfo(startAuctionInfo auctiontypes.StartAuctionInfo
 		"instance-guid": startAuctionInfo.InstanceGuid,
 		"disk-mb":       startAuctionInfo.DiskMB,
 		"memory-mb":     startAuctionInfo.MemoryMB,
-		"index":         startAuctionInfo.InstanceGuid,
+		"index":         startAuctionInfo.Index,
 	}
 }
 

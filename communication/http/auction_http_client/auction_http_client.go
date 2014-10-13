@@ -44,6 +44,12 @@ func New(client *http.Client, logger lager.Logger, addressLookup AddressLookup) 
 }
 
 func (c *AuctionHTTPClient) BidForStartAuction(repGuids []string, startAuctionInfo auctiontypes.StartAuctionInfo) auctiontypes.StartAuctionBids {
+	logger := c.logger.Session("bid-for-start-auction", lagerDataForStartAuctionInfo(startAuctionInfo))
+	logger = logger.WithData(lager.Data{
+		"num-requests": len(repGuids),
+	})
+	logger.Info("requesting")
+
 	body, _ := json.Marshal(startAuctionInfo)
 	responses := c.batch(repGuids, "GET", "/bids/start_auction", body)
 
@@ -52,15 +58,28 @@ func (c *AuctionHTTPClient) BidForStartAuction(repGuids []string, startAuctionIn
 		startAuctionBid := auctiontypes.StartAuctionBid{}
 		err := json.Unmarshal(response.Body, &startAuctionBid)
 		if err != nil {
+			logger.Error("failed-to-parse-response", err)
 			continue
 		}
 		startAuctionBids = append(startAuctionBids, startAuctionBid)
 	}
 
+	logger = logger.WithData(lager.Data{
+		"num-responses": len(startAuctionBids),
+	})
+	logger.Info("done")
+
 	return startAuctionBids
 }
 
 func (c *AuctionHTTPClient) BidForStopAuction(repGuids []string, stopAuctionInfo auctiontypes.StopAuctionInfo) auctiontypes.StopAuctionBids {
+	logger := c.logger.Session("bid-for-stop-auction", lager.Data{
+		"process-guid": stopAuctionInfo.ProcessGuid,
+		"index":        stopAuctionInfo.Index,
+		"num-requests": len(repGuids),
+	})
+	logger.Info("requesting")
+
 	body, _ := json.Marshal(stopAuctionInfo)
 	responses := c.batch(repGuids, "GET", "/bids/stop_auction", body)
 
@@ -69,15 +88,27 @@ func (c *AuctionHTTPClient) BidForStopAuction(repGuids []string, stopAuctionInfo
 		stopAuctionBid := auctiontypes.StopAuctionBid{}
 		err := json.Unmarshal(response.Body, &stopAuctionBid)
 		if err != nil {
+			logger.Error("failed-to-parse-response", err)
 			continue
 		}
 		stopAuctionBids = append(stopAuctionBids, stopAuctionBid)
 	}
 
+	logger = logger.WithData(lager.Data{
+		"num-responses": len(stopAuctionBids),
+	})
+	logger.Info("done")
+
 	return stopAuctionBids
 }
 
 func (c *AuctionHTTPClient) RebidThenTentativelyReserve(repGuids []string, startAuctionInfo auctiontypes.StartAuctionInfo) auctiontypes.StartAuctionBids {
+	logger := c.logger.Session("rebid-then-tentatively-reserve", lagerDataForStartAuctionInfo(startAuctionInfo))
+	logger = logger.WithData(lager.Data{
+		"num-requests": len(repGuids),
+	})
+	logger.Info("requesting")
+
 	body, _ := json.Marshal(startAuctionInfo)
 	responses := c.batch(repGuids, "POST", "/reservations", body)
 
@@ -86,27 +117,50 @@ func (c *AuctionHTTPClient) RebidThenTentativelyReserve(repGuids []string, start
 		startAuctionBid := auctiontypes.StartAuctionBid{}
 		err := json.Unmarshal(response.Body, &startAuctionBid)
 		if err != nil {
+			logger.Error("failed-to-parse-response", err)
 			continue
 		}
 		startAuctionBids = append(startAuctionBids, startAuctionBid)
 	}
 
+	logger = logger.WithData(lager.Data{
+		"num-responses": len(startAuctionBids),
+	})
+	logger.Info("done")
+
 	return startAuctionBids
 }
 
 func (c *AuctionHTTPClient) ReleaseReservation(repGuids []string, startAuctionInfo auctiontypes.StartAuctionInfo) {
+	logger := c.logger.Session("release-reservation", lagerDataForStartAuctionInfo(startAuctionInfo))
+	logger.Info("requesting")
 	body, _ := json.Marshal(startAuctionInfo)
 	c.batch(repGuids, "DELETE", "/reservations", body)
+	logger.Info("done")
 }
 
 func (c *AuctionHTTPClient) Run(repGuid string, lrpStartAuction models.LRPStartAuction) {
+	logger := c.logger.Session("run", lager.Data{
+		"process-guid":  lrpStartAuction.DesiredLRP.ProcessGuid,
+		"instance-guid": lrpStartAuction.InstanceGuid,
+		"index":         lrpStartAuction.Index,
+	})
+	logger.Info("requesting")
 	body, _ := json.Marshal(lrpStartAuction)
 	c.batch([]string{repGuid}, "POST", "/run", body)
+	logger.Info("done")
 }
 
 func (c *AuctionHTTPClient) Stop(repGuid string, stopInstance models.StopLRPInstance) {
+	logger := c.logger.Session("stop", lager.Data{
+		"process-guid":  stopInstance.ProcessGuid,
+		"instance-guid": stopInstance.InstanceGuid,
+		"index":         stopInstance.Index,
+	})
+	logger.Info("requesting")
 	body, _ := json.Marshal(stopInstance)
 	c.batch([]string{repGuid}, "POST", "/stop", body)
+	logger.Info("done")
 }
 
 func (c *AuctionHTTPClient) TotalResources(repGuid string) auctiontypes.Resources {
@@ -142,6 +196,16 @@ func (c *AuctionHTTPClient) SetSimulatedInstances(repGuid string, instances []au
 
 func (c *AuctionHTTPClient) Reset(repGuid string) {
 	c.batch([]string{repGuid}, "POST", "/sim/reset", nil)
+}
+
+func lagerDataForStartAuctionInfo(startAuctionInfo auctiontypes.StartAuctionInfo) lager.Data {
+	return lager.Data{
+		"process-guid":  startAuctionInfo.ProcessGuid,
+		"instance-guid": startAuctionInfo.InstanceGuid,
+		"disk-mb":       startAuctionInfo.DiskMB,
+		"memory-mb":     startAuctionInfo.MemoryMB,
+		"index":         startAuctionInfo.InstanceGuid,
+	}
 }
 
 /// batch http requests
