@@ -12,12 +12,14 @@ import (
 
 type httpRemoteAuctions struct {
 	hosts   []string
+	mode    string
 	counter uint64
 }
 
-func newHttpRemoteAuctions(hosts []string) *httpRemoteAuctions {
+func newHttpRemoteAuctions(hosts []string, mode string) *httpRemoteAuctions {
 	return &httpRemoteAuctions{
 		hosts:   hosts,
+		mode:    mode,
 		counter: 0,
 	}
 }
@@ -27,7 +29,7 @@ func (h *httpRemoteAuctions) RemoteStartAuction(auctionRequest auctiontypes.Star
 	host := h.hosts[int(index)%len(h.hosts)]
 
 	payload, _ := json.Marshal(auctionRequest)
-	res, err := http.Post("http://"+host+"/start-auction", "application/json", bytes.NewReader(payload))
+	res, err := http.Post("http://"+host+"/start-auction?mode="+h.mode, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return auctiontypes.StartAuctionResult{}, err
 	}
@@ -49,7 +51,7 @@ func (h *httpRemoteAuctions) RemoteStopAuction(auctionRequest auctiontypes.StopA
 	host := h.hosts[int(index)%len(h.hosts)]
 
 	payload, _ := json.Marshal(auctionRequest)
-	res, err := http.Post("http://"+host+"/stop-auction", "application/json", bytes.NewReader(payload))
+	res, err := http.Post("http://"+host+"/stop-auction?mode="+h.mode, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return auctiontypes.StopAuctionResult{}, err
 	}

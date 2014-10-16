@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_client"
+
 	"github.com/cloudfoundry/gunk/timeprovider"
+	"github.com/cloudfoundry/yagnats"
 
 	"github.com/cloudfoundry/storeadapter/workerpool"
 
@@ -28,6 +32,9 @@ import (
 
 var timeout = flag.Duration("timeout", time.Second, "timeout for nats responses")
 var etcdCluster = flag.String("etcdCluster", "", "etcd cluster")
+var natsUsername = flag.String("natsUsername", "", "nats username")
+var natsPassword = flag.String("natsPassword", "", "nats password")
+var natsAddresses = flag.String("natsAddresses", "", "nats addresses")
 
 var lookupTable map[string]string
 var lookupTableLock *sync.RWMutex
@@ -76,10 +83,12 @@ func main() {
 		log.Fatalln("you must provide an etcd cluster")
 	}
 
+	repNATSClient := connectToNATS()
+
 	FetchLookupTable()
 
-	var repClient auctiontypes.RepPoolClient
-	repClient = auction_http_client.New(&http.Client{
+	var repHTTPClient auctiontypes.RepPoolClient
+	repHTTPClient = auction_http_client.New(&http.Client{
 		Timeout: *timeout,
 	}, cf_lager.New("auctioneer-http"), AddressLookup)
 
@@ -89,6 +98,11 @@ func main() {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
+		}
+
+		repClient := repHTTPClient
+		if r.URL.Query().Get("mode") == "NATS" {
+			repClient = repNATSClient
 		}
 
 		auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
@@ -103,6 +117,11 @@ func main() {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
+		}
+
+		repClient := repHTTPClient
+		if r.URL.Query().Get("mode") == "NATS" {
+			repClient = repNATSClient
 		}
 
 		auctionResult, _ := auctionrunner.New(repClient).RunLRPStopAuction(auctionRequest)
@@ -121,4 +140,32 @@ func main() {
 	fmt.Println("auctioneering")
 
 	panic(http.ListenAndServe("0.0.0.0:8080", nil))
+}
+
+func connectToNATS() auctiontypes.RepPoolClient {
+	if *natsAddresses != "" && *natsUsername != "" && *natsPassword != "" {
+		natsMembers := []string{}
+		for _, addr := range strings.Split(*natsAddresses, ",") {
+			uri := url.URL{
+				Scheme: "nats",
+				Host:   addr,
+				User:   url.UserPassword(*natsUsername, *natsPassword),
+			}
+			natsMembers = append(natsMembers, uri.String())
+		}
+
+		client, err := yagnats.Connect(natsMembers)
+		if err != nil {
+			log.Fatalln("no nats:", err)
+		}
+
+		repClient, err := auction_nats_client.New(client, *timeout, cf_lager.New("auctioneer-nats"))
+		if err != nil {
+			log.Fatalln("no rep client:", err)
+		}
+
+		return repClient
+	}
+
+	return nil
 }

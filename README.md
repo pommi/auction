@@ -86,12 +86,205 @@ In practice, spinning up hundreds of external processes to simulate a distribute
 This can be done with Diego.  When Diego gets an API it will be possible to do this by simply pointing the simulation at Diego's API endpoint.  Until then, you must follow these steps:
 
 1. Compile `simulation/diego/auctioneer-lite` and `simulation/diego/rep-lite` (targeting linux) and upload a tarball of the resulting binary to a blob store (e.g. S3)
-2. Use `github.com/pivotal-cf-experimental/veritas` to desire 100 LRPs for `auctioneer-lite` and 100 LRPs for `rep-lite`:
+2. Use `github.com/pivotal-cf-experimental/veritas` to desire 100 LRPs for `auctioneer-lite` and 100 LRPs for `rep-lite` (note: you'll need to set NATSUSERNAME, NATSPASSWORD, NATSADDRESSES, ETCDCLUSTER:
 
 ```bash
-echo '{"process_guid":"rep-lite-1","domain":"veritas","root_fs":"","instances":1,"stack":"lucid64","actions":[{"action":"download","args":{"from":"http://onsi-public.s3.amazonaws.com/rep-lite.tar.gz","to":".","extract":true,"cache_key":""}},{"action":"download","args":{"from":"PLACEHOLDER_FILESERVER_URL/v1/static/linux-circus/linux-circus.tgz","to":"/tmp/circus","extract":true,"cache_key":""}},{"action":"parallel","args":{"actions":[{"action":"run","args":{"path":"./rep-lite","args":["-repGuid=rep-lite-1"],"env":[],"timeout":0,"resource_limits":{}}},{"action":"monitor","args":{"action":{"action":"run","args":{"path":"/tmp/circus/spy","args":["-addr=:8080"],"env":null,"timeout":0,"resource_limits":{}}},"healthy_hook":{"method":"PUT","url":"http://127.0.0.1:20515/lrp_running/rep-lite-1/PLACEHOLDER_INSTANCE_INDEX/PLACEHOLDER_INSTANCE_GUID"},"unhealthy_hook":{"method":"","url":""},"healthy_threshold":1,"unhealthy_threshold":1}}]}}],"disk_mb":256,"memory_mb":256,"ports":[{"container_port":8080}],"routes":["rep-lite-1.diego-2.cf-app.com"],"log":{"guid":"rep-lite-1","source_name":"VRT"}}' > desired_lrp_rep-lite.json
+cat > desired_lrp_rep-lite.json <<EOF
+{  
+   "process_guid":"rep-lite-1",
+   "domain":"veritas",
+   "root_fs":"",
+   "instances":1,
+   "stack":"lucid64",
+   "actions":[  
+      {  
+         "action":"download",
+         "args":{  
+            "from":"http://onsi-public.s3.amazonaws.com/rep-lite.tar.gz",
+            "to":".",
+            "extract":true,
+            "cache_key":""
+         }
+      },
+      {  
+         "action":"download",
+         "args":{  
+            "from":"PLACEHOLDER_FILESERVER_URL/v1/static/linux-circus/linux-circus.tgz",
+            "to":"/tmp/circus",
+            "extract":true,
+            "cache_key":""
+         }
+      },
+      {  
+         "action":"parallel",
+         "args":{  
+            "actions":[  
+               {  
+                  "action":"run",
+                  "args":{  
+                     "path":"./rep-lite",
+                     "args":[  
+                        "-repGuid=rep-lite-1",
+                        "-natsUsername=whirl865-irritancy",
+                        "-natsPassword=tubful1_handballer",
+                        "-natsAddresses=10.10.2.11:4222,10.10.3.11:4222"
+                     ],
+                     "env":[  
 
-echo '{"process_guid":"auctioneer-lite-1","domain":"veritas","root_fs":"","instances":1,"stack":"lucid64","actions":[{"action":"download","args":{"from":"http://onsi-public.s3.amazonaws.com/auctioneer-lite.tar.gz","to":".","extract":true,"cache_key":""}},{"action":"download","args":{"from":"PLACEHOLDER_FILESERVER_URL/v1/static/linux-circus/linux-circus.tgz","to":"/tmp/circus","extract":true,"cache_key":""}},{"action":"parallel","args":{"actions":[{"action":"run","args":{"path":"./auctioneer-lite","args":[""],"env":[],"timeout":0,"resource_limits":{}}},{"action":"monitor","args":{"action":{"action":"run","args":{"path":"/tmp/circus/spy","args":["-addr=:8080"],"env":null,"timeout":0,"resource_limits":{}}},"healthy_hook":{"method":"PUT","url":"http://127.0.0.1:20515/lrp_running/auctioneer-lite-1/PLACEHOLDER_INSTANCE_INDEX/PLACEHOLDER_INSTANCE_GUID"},"unhealthy_hook":{"method":"","url":""},"healthy_threshold":1,"unhealthy_threshold":1}}]}}],"disk_mb":256,"memory_mb":256,"ports":[{"container_port":8080}],"routes":["auctioneer-lite-1.diego-2.cf-app.com"],"log":{"guid":"auctioneer-lite-1","source_name":"VRT"}}' > desired_lrp_auctioneer-lite.json
+                     ],
+                     "timeout":0,
+                     "resource_limits":{  
+
+                     }
+                  }
+               },
+               {  
+                  "action":"monitor",
+                  "args":{  
+                     "action":{  
+                        "action":"run",
+                        "args":{  
+                           "path":"/tmp/circus/spy",
+                           "args":[  
+                              "-addr=:8080"
+                           ],
+                           "env":null,
+                           "timeout":0,
+                           "resource_limits":{  
+
+                           }
+                        }
+                     },
+                     "healthy_hook":{  
+                        "method":"PUT",
+                        "url":"http://127.0.0.1:20515/lrp_running/rep-lite-1/PLACEHOLDER_INSTANCE_INDEX/PLACEHOLDER_INSTANCE_GUID"
+                     },
+                     "unhealthy_hook":{  
+                        "method":"",
+                        "url":""
+                     },
+                     "healthy_threshold":1,
+                     "unhealthy_threshold":1
+                  }
+               }
+            ]
+         }
+      }
+   ],
+   "disk_mb":256,
+   "memory_mb":256,
+   "ports":[  
+      {  
+         "container_port":8080
+      }
+   ],
+   "routes":[  
+      "rep-lite-1.diego-1.cf-app.com"
+   ],
+   "log":{  
+      "guid":"rep-lite-1",
+      "source_name":"VRT"
+   }
+}
+EOF
+
+cat > desired_lrp_auctioneer-lite.json <<EOF
+{  
+   "process_guid":"auctioneer-lite-1",
+   "domain":"veritas",
+   "root_fs":"",
+   "instances":1,
+   "stack":"lucid64",
+   "actions":[  
+      {  
+         "action":"download",
+         "args":{  
+            "from":"http://onsi-public.s3.amazonaws.com/auctioneer-lite.tar.gz",
+            "to":".",
+            "extract":true,
+            "cache_key":""
+         }
+      },
+      {  
+         "action":"download",
+         "args":{  
+            "from":"PLACEHOLDER_FILESERVER_URL/v1/static/linux-circus/linux-circus.tgz",
+            "to":"/tmp/circus",
+            "extract":true,
+            "cache_key":""
+         }
+      },
+      {  
+         "action":"parallel",
+         "args":{  
+            "actions":[  
+               {  
+                  "action":"run",
+                  "args":{  
+                     "path":"./auctioneer-lite",
+                     "args":[  
+                        "-timeout=1s",
+                        "-etcdCluster=http://10.10.5.10:4001",
+                        "-natsUsername=whirl865-irritancy",
+                        "-natsPassword=tubful1_handballer",
+                        "-natsAddresses=10.10.2.11:4222,10.10.3.11:4222"
+                     ],
+                     "env":[],
+                     "timeout":0,
+                     "resource_limits":{  
+
+                     }
+                  }
+               },
+               {  
+                  "action":"monitor",
+                  "args":{  
+                     "action":{  
+                        "action":"run",
+                        "args":{  
+                           "path":"/tmp/circus/spy",
+                           "args":[  
+                              "-addr=:8080"
+                           ],
+                           "env":null,
+                           "timeout":0,
+                           "resource_limits":{  
+
+                           }
+                        }
+                     },
+                     "healthy_hook":{  
+                        "method":"PUT",
+                        "url":"http://127.0.0.1:20515/lrp_running/auctioneer-lite-1/PLACEHOLDER_INSTANCE_INDEX/PLACEHOLDER_INSTANCE_GUID"
+                     },
+                     "unhealthy_hook":{  
+                        "method":"",
+                        "url":""
+                     },
+                     "healthy_threshold":1,
+                     "unhealthy_threshold":1
+                  }
+               }
+            ]
+         }
+      }
+   ],
+   "disk_mb":256,
+   "memory_mb":256,
+   "ports":[  
+      {  
+         "container_port":8080
+      }
+   ],
+   "routes":[  
+      "auctioneer-lite-1.diego-1.cf-app.com"
+   ],
+   "log":{  
+      "guid":"auctioneer-lite-1",
+      "source_name":"VRT"
+   }
+}
+EOF
 
 for i in {1..100}; do sed "s/rep-lite-1/rep-lite-$i/g" desired_lrp_rep-lite.json > temp.json; veritas submit-lrp temp.json; done
 

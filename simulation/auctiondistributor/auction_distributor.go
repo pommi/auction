@@ -36,11 +36,11 @@ func NewInProcessAuctionDistributor(client auctiontypes.SimulationRepPoolClient)
 	}
 }
 
-func NewRemoteAuctionDistributor(hosts []string, client auctiontypes.SimulationRepPoolClient) *AuctionDistributor {
+func NewRemoteAuctionDistributor(hosts []string, client auctiontypes.SimulationRepPoolClient, mode string) *AuctionDistributor {
 	return &AuctionDistributor{
 		client:            client,
-		startCommunicator: newHttpRemoteAuctions(hosts).RemoteStartAuction,
-		stopCommunicator:  newHttpRemoteAuctions(hosts).RemoteStopAuction,
+		startCommunicator: newHttpRemoteAuctions(hosts, mode).RemoteStartAuction,
+		stopCommunicator:  newHttpRemoteAuctions(hosts, mode).RemoteStopAuction,
 	}
 }
 

@@ -4,8 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 
 	"github.com/cloudfoundry-incubator/auction/communication/http/routes"
+	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_server"
+	"github.com/cloudfoundry/yagnats"
 
 	"github.com/tedsuo/rata"
 
@@ -19,10 +23,11 @@ import (
 	"github.com/tedsuo/ifrit/sigmon"
 )
 
-var memoryMB = flag.Int("memoryMB", 100, "total available memory in MB")
-var diskMB = flag.Int("diskMB", 100, "total available disk in MB")
-var containers = flag.Int("containers", 100, "total available containers")
 var repGuid = flag.String("repGuid", "", "rep-guid")
+
+var natsUsername = flag.String("natsUsername", "", "nats username")
+var natsPassword = flag.String("natsPassword", "", "nats password")
+var natsAddresses = flag.String("natsAddresses", "", "nats addresses")
 
 func main() {
 	flag.Parse()
@@ -32,13 +37,15 @@ func main() {
 	}
 
 	repDelegate := simulationrepdelegate.New(auctiontypes.Resources{
-		MemoryMB:   *memoryMB,
-		DiskMB:     *diskMB,
-		Containers: *containers,
+		MemoryMB:   100,
+		DiskMB:     100,
+		Containers: 100,
 	})
 	rep := auctionrep.New(*repGuid, repDelegate)
 
-	handlers := auction_http_handlers.New(rep, cf_lager.New("rep-lite").Session(*repGuid))
+	go serveOverNATS(rep)
+
+	handlers := auction_http_handlers.New(rep, cf_lager.New("rep-lite-http").Session(*repGuid))
 	router, err := rata.NewRouter(routes.Routes, handlers)
 	if err != nil {
 		log.Fatalln("failed to make router:", err)
@@ -51,5 +58,27 @@ func main() {
 	err = <-monitor.Wait()
 	if err != nil {
 		println("EXITED WITH ERROR: ", err.Error())
+	}
+}
+
+func serveOverNATS(rep *auctionrep.AuctionRep) {
+	if *natsAddresses != "" && *natsUsername != "" && *natsPassword != "" {
+		natsMembers := []string{}
+		for _, addr := range strings.Split(*natsAddresses, ",") {
+			uri := url.URL{
+				Scheme: "nats",
+				Host:   addr,
+				User:   url.UserPassword(*natsUsername, *natsPassword),
+			}
+			natsMembers = append(natsMembers, uri.String())
+		}
+
+		client, err := yagnats.Connect(natsMembers)
+		if err != nil {
+			log.Fatalln("no nats:", err)
+		}
+
+		natsRunner := auction_nats_server.New(client, rep, cf_lager.New("rep-lite-nats").Session(*repGuid))
+		ifrit.Envoke(sigmon.New(natsRunner))
 	}
 }

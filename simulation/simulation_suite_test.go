@@ -39,7 +39,8 @@ var auctioneerMode string
 const InProcess = "inprocess"
 const NATS = "nats"
 const HTTP = "http"
-const DiegoCommunicationMode = "diego"
+const DiegoNATSCommunicationMode = "diego-nats"
+const DiegoHTTPCommunicationMode = "diego-http"
 const ExternalAuctioneerMode = "external"
 
 const numAuctioneers = 100
@@ -70,7 +71,7 @@ var reportName string
 var disableSVGReport bool
 
 func init() {
-	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess, nats, http, or diego")
+	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess, nats, http, diego-nats or diego-http")
 	flag.StringVar(&auctioneerMode, "auctioneerMode", "inprocess", "one of inprocess or external")
 	flag.DurationVar(&timeout, "timeout", time.Second, "timeout when waiting for responses from remote calls")
 
@@ -100,6 +101,7 @@ var _ = BeforeSuite(func() {
 	logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, lager.DEBUG))
 
 	sessionsToTerminate = []*gexec.Session{}
+	var mode string
 	hosts := []string{}
 	switch communicationMode {
 	case InProcess:
@@ -117,6 +119,7 @@ var _ = BeforeSuite(func() {
 		if auctioneerMode == ExternalAuctioneerMode {
 			hosts = launchExternalNATSAuctioneers(natsAddrs)
 		}
+		mode = "NATS"
 	case HTTP:
 		var addressLookupTable map[string]string
 		repGuids, addressLookupTable = launchExternalHTTPReps()
@@ -127,18 +130,25 @@ var _ = BeforeSuite(func() {
 		if auctioneerMode == ExternalAuctioneerMode {
 			hosts = launchExternalHTTPAuctioneers(addressLookupTable)
 		}
-	case DiegoCommunicationMode:
+		mode = "HTTP"
+	case DiegoNATSCommunicationMode, DiegoHTTPCommunicationMode:
 		repGuids = []string{}
 		for i := 1; i <= 100; i++ {
 			repGuids = append(repGuids, fmt.Sprintf("rep-lite-%d", i))
 		}
 		addressLookup := func(repGuid string) (string, error) {
-			return fmt.Sprintf("http://%s.diego-2.cf-app.com", repGuid), nil
+			return fmt.Sprintf("http://%s.diego-1.cf-app.com", repGuid), nil
 		}
 		for i := 1; i <= 100; i++ {
-			hosts = append(hosts, fmt.Sprintf("auctioneer-lite-%d.diego-2.cf-app.com", i))
+			hosts = append(hosts, fmt.Sprintf("auctioneer-lite-%d.diego-1.cf-app.com", i))
 		}
 		client = auction_http_client.New(http.DefaultClient, logger, addressLookup)
+		auctioneerMode = ExternalAuctioneerMode
+		if communicationMode == DiegoNATSCommunicationMode {
+			mode = "NATS"
+		} else {
+			mode = "HTTP"
+		}
 	default:
 		panic(fmt.Sprintf("unknown communication mode: %s", communicationMode))
 	}
@@ -146,7 +156,7 @@ var _ = BeforeSuite(func() {
 	if auctioneerMode == InProcess {
 		auctionDistributor = auctiondistributor.NewInProcessAuctionDistributor(client)
 	} else if auctioneerMode == ExternalAuctioneerMode {
-		auctionDistributor = auctiondistributor.NewRemoteAuctionDistributor(hosts, client)
+		auctionDistributor = auctiondistributor.NewRemoteAuctionDistributor(hosts, client, mode)
 	}
 })
 
