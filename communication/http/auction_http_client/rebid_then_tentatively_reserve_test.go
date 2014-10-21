@@ -26,7 +26,7 @@ var _ = Describe("RebidThenTentativelyReserve", func() {
 	})
 
 	It("should request reservations from all passed in reps", func() {
-		client.RebidThenTentativelyReserve([]string{"A", "B"}, startAuctionInfo)
+		client.RebidThenTentativelyReserve(RepAddressesFor("A", "B"), startAuctionInfo)
 
 		Ω(auctionRepA.RebidThenTentativelyReserveCallCount()).Should(Equal(1))
 		Ω(auctionRepA.RebidThenTentativelyReserveArgsForCall(0)).Should(Equal(startAuctionInfo))
@@ -38,7 +38,7 @@ var _ = Describe("RebidThenTentativelyReserve", func() {
 	Context("when the reservations are succesful", func() {
 		BeforeEach(func() {
 			auctionRepB.RebidThenTentativelyReserveReturns(0.48, nil)
-			startAuctionBids = client.RebidThenTentativelyReserve([]string{"A", "B"}, startAuctionInfo)
+			startAuctionBids = client.RebidThenTentativelyReserve(RepAddressesFor("A", "B"), startAuctionInfo)
 		})
 
 		It("returns all bids", func() {
@@ -52,7 +52,7 @@ var _ = Describe("RebidThenTentativelyReserve", func() {
 	Context("when reservations are unsuccesful", func() {
 		BeforeEach(func() {
 			auctionRepB.RebidThenTentativelyReserveReturns(0, errors.New("oops"))
-			startAuctionBids = client.RebidThenTentativelyReserve([]string{"A", "B"}, startAuctionInfo)
+			startAuctionBids = client.RebidThenTentativelyReserve(RepAddressesFor("A", "B"), startAuctionInfo)
 		})
 
 		It("does not return them", func() {
@@ -64,7 +64,7 @@ var _ = Describe("RebidThenTentativelyReserve", func() {
 
 	Context("when a request doesn't succeed", func() {
 		BeforeEach(func() {
-			startAuctionBids = client.RebidThenTentativelyReserve([]string{"A", "RepThat500s"}, startAuctionInfo)
+			startAuctionBids = client.RebidThenTentativelyReserve(RepAddressesFor("A", "RepThat500s"), startAuctionInfo)
 		})
 
 		It("does not return bids that didn't succeed", func() {
@@ -76,7 +76,7 @@ var _ = Describe("RebidThenTentativelyReserve", func() {
 
 	Context("when a request errors (in the network sense)", func() {
 		BeforeEach(func() {
-			startAuctionBids = client.RebidThenTentativelyReserve([]string{"A", "RepThatErrors"}, startAuctionInfo)
+			startAuctionBids = client.RebidThenTentativelyReserve(RepAddressesFor("A", "RepThatErrors"), startAuctionInfo)
 		})
 
 		It("does not return bids that (network) errored", func() {

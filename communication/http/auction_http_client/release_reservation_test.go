@@ -26,7 +26,7 @@ var _ = Describe("ReleaseReservation", func() {
 	})
 
 	It("should tell all the reps to release the reservation", func() {
-		client.ReleaseReservation([]string{"A", "B", "RepThat500s", "RepThatErrors"}, startAuctionInfo)
+		client.ReleaseReservation(RepAddressesFor("A", "B", "RepThat500s", "RepThatErrors"), startAuctionInfo)
 
 		Ω(auctionRepA.ReleaseReservationCallCount()).Should(Equal(1))
 		Ω(auctionRepA.ReleaseReservationArgsForCall(0)).Should(Equal(startAuctionInfo))

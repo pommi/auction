@@ -24,19 +24,19 @@ var _ = Describe("Stop", func() {
 	})
 
 	It("should tell the rep to stop", func() {
-		client.Stop("A", stopLRPInstance)
+		client.Stop(RepAddressFor("A"), stopLRPInstance)
 
 		Ω(auctionRepA.StopCallCount()).Should(Equal(1))
 		Ω(auctionRepA.StopArgsForCall(0)).Should(Equal(stopLRPInstance))
 
-		client.Stop("B", stopLRPInstance)
+		client.Stop(RepAddressFor("B"), stopLRPInstance)
 
 		Ω(auctionRepB.StopCallCount()).Should(Equal(1))
 		Ω(auctionRepB.StopArgsForCall(0)).Should(Equal(stopLRPInstance))
 
 		//these should not panic/explode
-		client.Stop("RepThat500s", stopLRPInstance)
-		client.Stop("RepThatErrors", stopLRPInstance)
+		client.Stop(RepAddressFor("RepThat500s"), stopLRPInstance)
+		client.Stop(RepAddressFor("RepThatErrors"), stopLRPInstance)
 
 	})
 

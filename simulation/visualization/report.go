@@ -9,7 +9,7 @@ import (
 )
 
 type Report struct {
-	RepGuids                     []string
+	RepAddresses                 []auctiontypes.RepAddress
 	AuctionResults               []auctiontypes.StartAuctionResult
 	InstancesByRep               map[string][]auctiontypes.SimulatedInstance
 	AuctionDuration              time.Duration
@@ -50,7 +50,7 @@ func (r *Report) NAuctions() int {
 }
 
 func (r *Report) NReps() int {
-	return len(r.RepGuids)
+	return len(r.RepAddresses)
 }
 
 func (r *Report) NMissingInstances() int {
@@ -129,12 +129,12 @@ func (r *Report) WaitTimeStats() Stat {
 	return NewStat(waitTimes)
 }
 
-func FetchAndSortInstances(client auctiontypes.SimulationRepPoolClient, repGuids []string) map[string][]auctiontypes.SimulatedInstance {
+func FetchAndSortInstances(client auctiontypes.SimulationRepPoolClient, repAddresses []auctiontypes.RepAddress) map[string][]auctiontypes.SimulatedInstance {
 	instancesByRepGuid := map[string][]auctiontypes.SimulatedInstance{}
-	for _, repGuid := range repGuids {
-		instances := client.SimulatedInstances(repGuid)
+	for _, repAddress := range repAddresses {
+		instances := client.SimulatedInstances(repAddress)
 		sort.Sort(ByProcessGuid(instances))
-		instancesByRepGuid[repGuid] = instances
+		instancesByRepGuid[repAddress.RepGuid] = instances
 	}
 
 	return instancesByRepGuid

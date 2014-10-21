@@ -3,7 +3,6 @@ package auction_http_client
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -14,44 +13,30 @@ import (
 )
 
 type AuctionHTTPClient struct {
-	client        *http.Client
-	logger        lager.Logger
-	addressLookup AddressLookup
-}
-
-type AddressLookup func(string) (string, error)
-
-func AddressLookupFromMap(lookupTable map[string]string) AddressLookup {
-	return func(repGuid string) (string, error) {
-		address, ok := lookupTable[repGuid]
-		if !ok {
-			return "", errors.New("couldn't find address for " + repGuid)
-		}
-		return address, nil
-	}
+	client *http.Client
+	logger lager.Logger
 }
 
 type Response struct {
 	Body []byte
 }
 
-func New(client *http.Client, logger lager.Logger, addressLookup AddressLookup) *AuctionHTTPClient {
+func New(client *http.Client, logger lager.Logger) *AuctionHTTPClient {
 	return &AuctionHTTPClient{
-		client:        client,
-		logger:        logger,
-		addressLookup: addressLookup,
+		client: client,
+		logger: logger,
 	}
 }
 
-func (c *AuctionHTTPClient) BidForStartAuction(repGuids []string, startAuctionInfo auctiontypes.StartAuctionInfo) auctiontypes.StartAuctionBids {
+func (c *AuctionHTTPClient) BidForStartAuction(repAddresses []auctiontypes.RepAddress, startAuctionInfo auctiontypes.StartAuctionInfo) auctiontypes.StartAuctionBids {
 	logger := c.logger.Session("bid-for-start-auction", lagerDataForStartAuctionInfo(startAuctionInfo))
 	logger = logger.WithData(lager.Data{
-		"num-requests": len(repGuids),
+		"num-requests": len(repAddresses),
 	})
 	logger.Info("requesting")
 
 	body, _ := json.Marshal(startAuctionInfo)
-	responses := c.batch(repGuids, "GET", "/bids/start_auction", body)
+	responses := c.batch(repAddresses, "GET", "/bids/start_auction", body)
 
 	startAuctionBids := auctiontypes.StartAuctionBids{}
 	for _, response := range responses {
@@ -72,16 +57,16 @@ func (c *AuctionHTTPClient) BidForStartAuction(repGuids []string, startAuctionIn
 	return startAuctionBids
 }
 
-func (c *AuctionHTTPClient) BidForStopAuction(repGuids []string, stopAuctionInfo auctiontypes.StopAuctionInfo) auctiontypes.StopAuctionBids {
+func (c *AuctionHTTPClient) BidForStopAuction(repAddresses []auctiontypes.RepAddress, stopAuctionInfo auctiontypes.StopAuctionInfo) auctiontypes.StopAuctionBids {
 	logger := c.logger.Session("bid-for-stop-auction", lager.Data{
 		"process-guid": stopAuctionInfo.ProcessGuid,
 		"index":        stopAuctionInfo.Index,
-		"num-requests": len(repGuids),
+		"num-requests": len(repAddresses),
 	})
 	logger.Info("requesting")
 
 	body, _ := json.Marshal(stopAuctionInfo)
-	responses := c.batch(repGuids, "GET", "/bids/stop_auction", body)
+	responses := c.batch(repAddresses, "GET", "/bids/stop_auction", body)
 
 	stopAuctionBids := auctiontypes.StopAuctionBids{}
 	for _, response := range responses {
@@ -102,15 +87,15 @@ func (c *AuctionHTTPClient) BidForStopAuction(repGuids []string, stopAuctionInfo
 	return stopAuctionBids
 }
 
-func (c *AuctionHTTPClient) RebidThenTentativelyReserve(repGuids []string, startAuctionInfo auctiontypes.StartAuctionInfo) auctiontypes.StartAuctionBids {
+func (c *AuctionHTTPClient) RebidThenTentativelyReserve(repAddresses []auctiontypes.RepAddress, startAuctionInfo auctiontypes.StartAuctionInfo) auctiontypes.StartAuctionBids {
 	logger := c.logger.Session("rebid-then-tentatively-reserve", lagerDataForStartAuctionInfo(startAuctionInfo))
 	logger = logger.WithData(lager.Data{
-		"num-requests": len(repGuids),
+		"num-requests": len(repAddresses),
 	})
 	logger.Info("requesting")
 
 	body, _ := json.Marshal(startAuctionInfo)
-	responses := c.batch(repGuids, "POST", "/reservations", body)
+	responses := c.batch(repAddresses, "POST", "/reservations", body)
 
 	startAuctionBids := auctiontypes.StartAuctionBids{}
 	for _, response := range responses {
@@ -131,15 +116,15 @@ func (c *AuctionHTTPClient) RebidThenTentativelyReserve(repGuids []string, start
 	return startAuctionBids
 }
 
-func (c *AuctionHTTPClient) ReleaseReservation(repGuids []string, startAuctionInfo auctiontypes.StartAuctionInfo) {
+func (c *AuctionHTTPClient) ReleaseReservation(repAddresses []auctiontypes.RepAddress, startAuctionInfo auctiontypes.StartAuctionInfo) {
 	logger := c.logger.Session("release-reservation", lagerDataForStartAuctionInfo(startAuctionInfo))
 	logger.Info("requesting")
 	body, _ := json.Marshal(startAuctionInfo)
-	c.batch(repGuids, "DELETE", "/reservations", body)
+	c.batch(repAddresses, "DELETE", "/reservations", body)
 	logger.Info("done")
 }
 
-func (c *AuctionHTTPClient) Run(repGuid string, lrpStartAuction models.LRPStartAuction) {
+func (c *AuctionHTTPClient) Run(repAddress auctiontypes.RepAddress, lrpStartAuction models.LRPStartAuction) {
 	logger := c.logger.Session("run", lager.Data{
 		"process-guid":  lrpStartAuction.DesiredLRP.ProcessGuid,
 		"instance-guid": lrpStartAuction.InstanceGuid,
@@ -147,11 +132,11 @@ func (c *AuctionHTTPClient) Run(repGuid string, lrpStartAuction models.LRPStartA
 	})
 	logger.Info("requesting")
 	body, _ := json.Marshal(lrpStartAuction)
-	c.batch([]string{repGuid}, "POST", "/run", body)
+	c.batch([]auctiontypes.RepAddress{repAddress}, "POST", "/run", body)
 	logger.Info("done")
 }
 
-func (c *AuctionHTTPClient) Stop(repGuid string, stopInstance models.StopLRPInstance) {
+func (c *AuctionHTTPClient) Stop(repAddress auctiontypes.RepAddress, stopInstance models.StopLRPInstance) {
 	logger := c.logger.Session("stop", lager.Data{
 		"process-guid":  stopInstance.ProcessGuid,
 		"instance-guid": stopInstance.InstanceGuid,
@@ -159,12 +144,12 @@ func (c *AuctionHTTPClient) Stop(repGuid string, stopInstance models.StopLRPInst
 	})
 	logger.Info("requesting")
 	body, _ := json.Marshal(stopInstance)
-	c.batch([]string{repGuid}, "POST", "/stop", body)
+	c.batch([]auctiontypes.RepAddress{repAddress}, "POST", "/stop", body)
 	logger.Info("done")
 }
 
-func (c *AuctionHTTPClient) TotalResources(repGuid string) auctiontypes.Resources {
-	responses := c.batch([]string{repGuid}, "GET", "/sim/total_resources", nil)
+func (c *AuctionHTTPClient) TotalResources(repAddress auctiontypes.RepAddress) auctiontypes.Resources {
+	responses := c.batch([]auctiontypes.RepAddress{repAddress}, "GET", "/sim/total_resources", nil)
 	if len(responses) != 1 {
 		return auctiontypes.Resources{}
 	}
@@ -176,8 +161,8 @@ func (c *AuctionHTTPClient) TotalResources(repGuid string) auctiontypes.Resource
 	return resources
 }
 
-func (c *AuctionHTTPClient) SimulatedInstances(repGuid string) []auctiontypes.SimulatedInstance {
-	responses := c.batch([]string{repGuid}, "GET", "/sim/simulated_instances", nil)
+func (c *AuctionHTTPClient) SimulatedInstances(repAddress auctiontypes.RepAddress) []auctiontypes.SimulatedInstance {
+	responses := c.batch([]auctiontypes.RepAddress{repAddress}, "GET", "/sim/simulated_instances", nil)
 	if len(responses) != 1 {
 		return nil
 	}
@@ -189,13 +174,13 @@ func (c *AuctionHTTPClient) SimulatedInstances(repGuid string) []auctiontypes.Si
 	return instances
 }
 
-func (c *AuctionHTTPClient) SetSimulatedInstances(repGuid string, instances []auctiontypes.SimulatedInstance) {
+func (c *AuctionHTTPClient) SetSimulatedInstances(repAddress auctiontypes.RepAddress, instances []auctiontypes.SimulatedInstance) {
 	body, _ := json.Marshal(instances)
-	c.batch([]string{repGuid}, "POST", "/sim/simulated_instances", body)
+	c.batch([]auctiontypes.RepAddress{repAddress}, "POST", "/sim/simulated_instances", body)
 }
 
-func (c *AuctionHTTPClient) Reset(repGuid string) {
-	c.batch([]string{repGuid}, "POST", "/sim/reset", nil)
+func (c *AuctionHTTPClient) Reset(repAddress auctiontypes.RepAddress) {
+	c.batch([]auctiontypes.RepAddress{repAddress}, "POST", "/sim/reset", nil)
 }
 
 func lagerDataForStartAuctionInfo(startAuctionInfo auctiontypes.StartAuctionInfo) lager.Data {
@@ -210,14 +195,11 @@ func lagerDataForStartAuctionInfo(startAuctionInfo auctiontypes.StartAuctionInfo
 
 /// batch http requests
 
-func (c *AuctionHTTPClient) batch(repGuids []string, method string, path string, body []byte) []Response {
+func (c *AuctionHTTPClient) batch(repAddresses []auctiontypes.RepAddress, method string, path string, body []byte) []Response {
 	requests := []*http.Request{}
-	for _, repGuid := range repGuids {
+	for _, repAddress := range repAddresses {
 		reader := bytes.NewBuffer(body)
-		url, err := c.addressLookup(repGuid)
-		if err != nil {
-			continue
-		}
+		url := repAddress.Address
 		request, err := http.NewRequest(method, url+path, reader)
 		if err != nil {
 			continue

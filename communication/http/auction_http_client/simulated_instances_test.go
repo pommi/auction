@@ -32,20 +32,20 @@ var _ = Describe("(Sim) SimulatedInstances", func() {
 	})
 
 	It("should return the instances returned by the rep", func() {
-		returnedInstances := client.SimulatedInstances("A")
+		returnedInstances := client.SimulatedInstances(RepAddressFor("A"))
 		Ω(returnedInstances).Should(Equal(instances))
 	})
 
 	Context("when a request doesn't succeed", func() {
 		It("does not return any instances", func() {
-			returnedInstances := client.SimulatedInstances("RepThat500s")
+			returnedInstances := client.SimulatedInstances(RepAddressFor("RepThat500s"))
 			Ω(returnedInstances).Should(BeNil())
 		})
 	})
 
 	Context("when a request errors (in the network sense)", func() {
 		It("does not return any instances", func() {
-			returnedInstances := client.SimulatedInstances("RepThatErrors")
+			returnedInstances := client.SimulatedInstances(RepAddressFor("RepThatErrors"))
 			Ω(returnedInstances).Should(BeNil())
 		})
 	})

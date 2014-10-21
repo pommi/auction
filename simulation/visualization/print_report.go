@@ -23,7 +23,7 @@ func init() {
 	format.UseStringerRepresentation = true
 }
 
-func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiontypes.StartAuctionResult, representatives []string, duration time.Duration, rules auctiontypes.StartAuctionRules) {
+func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiontypes.StartAuctionResult, representatives []auctiontypes.RepAddress, duration time.Duration, rules auctiontypes.StartAuctionRules) {
 	roundsDistribution := map[int]int{}
 	roundsBiddingTimeDistributions := map[int][]time.Duration{}
 	auctionedInstances := map[string]bool{}
@@ -50,19 +50,19 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 
 	fmt.Println("Distribution")
 	maxGuidLength := 0
-	for _, repGuid := range representatives {
-		if len(repGuid) > maxGuidLength {
-			maxGuidLength = len(repGuid)
+	for _, repAddress := range representatives {
+		if len(repAddress.RepGuid) > maxGuidLength {
+			maxGuidLength = len(repAddress.RepGuid)
 		}
 	}
 	guidFormat := fmt.Sprintf("%%%ds", maxGuidLength)
 
 	numNew := 0
-	for _, repGuid := range representatives {
-		repString := fmt.Sprintf(guidFormat, repGuid)
+	for _, repAddress := range representatives {
+		repString := fmt.Sprintf(guidFormat, repAddress.RepGuid)
 
 		instanceString := ""
-		instances := client.SimulatedInstances(repGuid)
+		instances := client.SimulatedInstances(repAddress)
 
 		availableColors := []string{"red", "cyan", "yellow", "gray", "purple", "green"}
 		colorLookup := map[string]string{"red": redColor, "green": greenColor, "cyan": cyanColor, "yellow": yellowColor, "gray": lightGrayColor, "purple": purpleColor}
@@ -87,7 +87,7 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 			instanceString += strings.Repeat(colorLookup[col]+"-"+defaultStyle, originalCounts[col])
 			instanceString += strings.Repeat(colorLookup[col]+"+"+defaultStyle, newCounts[col])
 		}
-		instanceString += strings.Repeat(grayColor+"."+defaultStyle, client.TotalResources(repGuid).MemoryMB-totalUsage)
+		instanceString += strings.Repeat(grayColor+"."+defaultStyle, client.TotalResources(repAddress).MemoryMB-totalUsage)
 
 		fmt.Printf("  %s: %s\n", repString, instanceString)
 	}

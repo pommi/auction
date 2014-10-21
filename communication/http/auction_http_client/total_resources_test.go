@@ -21,20 +21,20 @@ var _ = Describe("(Sim) TotalResources", func() {
 	})
 
 	It("should return the resources returned by the rep", func() {
-		returnedResources := client.TotalResources("A")
+		returnedResources := client.TotalResources(RepAddressFor("A"))
 		Ω(returnedResources).Should(Equal(totalResources))
 	})
 
 	Context("when a request doesn't succeed", func() {
 		It("does not return any resources", func() {
-			returnedResources := client.TotalResources("RepThat500s")
+			returnedResources := client.TotalResources(RepAddressFor("RepThat500s"))
 			Ω(returnedResources).Should(BeZero())
 		})
 	})
 
 	Context("when a request errors (in the network sense)", func() {
 		It("does not return any resources", func() {
-			returnedResources := client.TotalResources("RepThatErrors")
+			returnedResources := client.TotalResources(RepAddressFor("RepThatErrors"))
 			Ω(returnedResources).Should(BeZero())
 		})
 	})

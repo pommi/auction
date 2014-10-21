@@ -23,19 +23,19 @@ var _ = Describe("Run", func() {
 	})
 
 	It("should tell the rep to run ", func() {
-		client.Run("A", lrpStartAuction)
+		client.Run(RepAddressFor("A"), lrpStartAuction)
 
 		Ω(auctionRepA.RunCallCount()).Should(Equal(1))
 		Ω(auctionRepA.RunArgsForCall(0)).Should(Equal(lrpStartAuction))
 
-		client.Run("B", lrpStartAuction)
+		client.Run(RepAddressFor("B"), lrpStartAuction)
 
 		Ω(auctionRepB.RunCallCount()).Should(Equal(1))
 		Ω(auctionRepB.RunArgsForCall(0)).Should(Equal(lrpStartAuction))
 
 		//these should not panic/explode
-		client.Run("RepThat500s", lrpStartAuction)
-		client.Run("RepThatErrors", lrpStartAuction)
+		client.Run(RepAddressFor("RepThat500s"), lrpStartAuction)
+		client.Run(RepAddressFor("RepThatErrors"), lrpStartAuction)
 
 	})
 

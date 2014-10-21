@@ -26,7 +26,7 @@ var _ = Describe("BidForStartAuction", func() {
 	})
 
 	It("should request bids from all passed in reps", func() {
-		client.BidForStartAuction([]string{"A", "B"}, startAuctionInfo)
+		client.BidForStartAuction(RepAddressesFor("A", "B"), startAuctionInfo)
 
 		Ω(auctionRepA.BidForStartAuctionCallCount()).Should(Equal(1))
 		Ω(auctionRepA.BidForStartAuctionArgsForCall(0)).Should(Equal(startAuctionInfo))
@@ -38,7 +38,7 @@ var _ = Describe("BidForStartAuction", func() {
 	Context("when the bids are succesful", func() {
 		BeforeEach(func() {
 			auctionRepB.BidForStartAuctionReturns(0.48, nil)
-			startAuctionBids = client.BidForStartAuction([]string{"A", "B"}, startAuctionInfo)
+			startAuctionBids = client.BidForStartAuction(RepAddressesFor("A", "B"), startAuctionInfo)
 		})
 
 		It("returns all bids", func() {
@@ -52,7 +52,7 @@ var _ = Describe("BidForStartAuction", func() {
 	Context("when bids are unsuccesful", func() {
 		BeforeEach(func() {
 			auctionRepB.BidForStartAuctionReturns(0, errors.New("oops"))
-			startAuctionBids = client.BidForStartAuction([]string{"A", "B"}, startAuctionInfo)
+			startAuctionBids = client.BidForStartAuction(RepAddressesFor("A", "B"), startAuctionInfo)
 		})
 
 		It("does not return them", func() {
@@ -64,7 +64,7 @@ var _ = Describe("BidForStartAuction", func() {
 
 	Context("when a request doesn't succeed", func() {
 		BeforeEach(func() {
-			startAuctionBids = client.BidForStartAuction([]string{"A", "RepThat500s"}, startAuctionInfo)
+			startAuctionBids = client.BidForStartAuction(RepAddressesFor("A", "RepThat500s"), startAuctionInfo)
 		})
 
 		It("does not return bids that didn't succeed", func() {
@@ -76,7 +76,7 @@ var _ = Describe("BidForStartAuction", func() {
 
 	Context("when a request errors (in the network sense)", func() {
 		BeforeEach(func() {
-			startAuctionBids = client.BidForStartAuction([]string{"A", "RepThatErrors"}, startAuctionInfo)
+			startAuctionBids = client.BidForStartAuction(RepAddressesFor("A", "RepThatErrors"), startAuctionInfo)
 		})
 
 		It("does not return bids that (network) errored", func() {

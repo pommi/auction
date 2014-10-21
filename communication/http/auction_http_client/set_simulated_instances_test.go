@@ -30,19 +30,19 @@ var _ = Describe("(Sim) SetSimulatedInstances", func() {
 	})
 
 	It("should post the instances to the rep", func() {
-		client.SetSimulatedInstances("A", instances)
+		client.SetSimulatedInstances(RepAddressFor("A"), instances)
 		Ω(auctionRepA.SetSimulatedInstancesArgsForCall(0)).Should(Equal(instances))
 	})
 
 	Context("when a request doesn't succeed", func() {
 		It("does not explode", func() {
-			client.SetSimulatedInstances("RepThat500s", instances)
+			client.SetSimulatedInstances(RepAddressFor("RepThat500s"), instances)
 		})
 	})
 
 	Context("when a request errors (in the network sense)", func() {
 		It("does not explode", func() {
-			client.SetSimulatedInstances("RepThatErrors", instances)
+			client.SetSimulatedInstances(RepAddressFor("RepThatErrors"), instances)
 		})
 	})
 })

@@ -7,19 +7,19 @@ import (
 
 var _ = Describe("(Sim) Reset", func() {
 	It("should tell the rep to reset", func() {
-		client.Reset("A")
+		client.Reset(RepAddressFor("A"))
 		Ω(auctionRepA.ResetCallCount()).Should(Equal(1))
 	})
 
 	Context("when a request doesn't succeed", func() {
 		It("does not explode", func() {
-			client.Reset("RepThat500s")
+			client.Reset(RepAddressFor("RepThat500s"))
 		})
 	})
 
 	Context("when a request errors (in the network sense)", func() {
 		It("does not explode", func() {
-			client.Reset("RepThatErrors")
+			client.Reset(RepAddressFor("RepThatErrors"))
 		})
 	})
 })

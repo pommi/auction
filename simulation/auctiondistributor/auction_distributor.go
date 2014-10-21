@@ -44,7 +44,7 @@ func NewRemoteAuctionDistributor(hosts []string, client auctiontypes.SimulationR
 	}
 }
 
-func (ad *AuctionDistributor) HoldAuctionsFor(instances []models.LRPStartAuction, representatives []string, rules auctiontypes.StartAuctionRules, maxConcurrent int) *visualization.Report {
+func (ad *AuctionDistributor) HoldAuctionsFor(instances []models.LRPStartAuction, repAddresses []auctiontypes.RepAddress, rules auctiontypes.StartAuctionRules, maxConcurrent int) *visualization.Report {
 	fmt.Printf("\nStarting Auctions\n\n")
 	bar := pb.StartNew(len(instances))
 
@@ -60,7 +60,7 @@ func (ad *AuctionDistributor) HoldAuctionsFor(instances []models.LRPStartAuction
 				startTime := time.Now()
 				result, _ := ad.startCommunicator(auctiontypes.StartAuctionRequest{
 					LRPStartAuction: inst,
-					RepGuids:        representatives,
+					RepAddresses:    repAddresses,
 					Rules:           rules,
 				})
 				result.Duration = time.Since(t)
@@ -87,16 +87,16 @@ func (ad *AuctionDistributor) HoldAuctionsFor(instances []models.LRPStartAuction
 
 	duration := time.Since(t)
 	report := &visualization.Report{
-		RepGuids:        representatives,
+		RepAddresses:    repAddresses,
 		AuctionResults:  results,
-		InstancesByRep:  visualization.FetchAndSortInstances(ad.client, representatives),
+		InstancesByRep:  visualization.FetchAndSortInstances(ad.client, repAddresses),
 		AuctionDuration: duration,
 	}
 
 	return report
 }
 
-func (ad *AuctionDistributor) HoldStopAuctions(stopAuctions []models.LRPStopAuction, representatives []string) []auctiontypes.StopAuctionResult {
+func (ad *AuctionDistributor) HoldStopAuctions(stopAuctions []models.LRPStopAuction, repAddresses []auctiontypes.RepAddress) []auctiontypes.StopAuctionResult {
 	t := time.Now()
 
 	c := make(chan auctiontypes.StopAuctionResult)
@@ -104,7 +104,7 @@ func (ad *AuctionDistributor) HoldStopAuctions(stopAuctions []models.LRPStopAuct
 		go func(stopAuction models.LRPStopAuction) {
 			result, _ := ad.stopCommunicator(auctiontypes.StopAuctionRequest{
 				LRPStopAuction: stopAuction,
-				RepGuids:       representatives,
+				RepAddresses:   repAddresses,
 			})
 			result.Duration = time.Since(t)
 			c <- result

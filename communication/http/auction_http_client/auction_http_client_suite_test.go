@@ -1,7 +1,6 @@
 package auction_http_client_test
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 
@@ -30,20 +29,11 @@ var serverA, serverB *httptest.Server
 var serverThat500s *ghttp.Server
 var serverThatErrors *ghttp.Server
 var client auctiontypes.SimulationRepPoolClient
-var addressMap map[string]string
-
-func addressLookup(repGuid string) (string, error) {
-	address, ok := addressMap[repGuid]
-	if !ok {
-		return "", errors.New("unknown repguid")
-	}
-
-	return address, nil
-}
+var addressMap map[string]auctiontypes.RepAddress
 
 var _ = BeforeEach(func() {
 	logger := lagertest.NewTestLogger("auction_http_client")
-	client = New(&http.Client{}, logger, addressLookup)
+	client = New(&http.Client{}, logger)
 
 	auctionRepA = &fakes.FakeSimulationAuctionRep{}
 	auctionRepA.GuidReturns("A")
@@ -74,13 +64,25 @@ var _ = BeforeEach(func() {
 	//5 erroringHandlers should be more than enough: none of the individual tests should make more than 5 requests to this server
 	serverThatErrors.AppendHandlers(erroringHandler, erroringHandler, erroringHandler, erroringHandler, erroringHandler)
 
-	addressMap = map[string]string{
-		"A":             serverA.URL,
-		"B":             serverB.URL,
-		"RepThat500s":   serverThat500s.URL(),
-		"RepThatErrors": serverThatErrors.URL(),
+	addressMap = map[string]auctiontypes.RepAddress{
+		"A":             auctiontypes.RepAddress{"A", serverA.URL},
+		"B":             auctiontypes.RepAddress{"B", serverB.URL},
+		"RepThat500s":   auctiontypes.RepAddress{"RepThat500s", serverThat500s.URL()},
+		"RepThatErrors": auctiontypes.RepAddress{"RepThatErrors", serverThatErrors.URL()},
 	}
 })
+
+func RepAddressesFor(repGuids ...string) []auctiontypes.RepAddress {
+	repAddresses := []auctiontypes.RepAddress{}
+	for _, repGuid := range repGuids {
+		repAddresses = append(repAddresses, RepAddressFor(repGuid))
+	}
+	return repAddresses
+}
+
+func RepAddressFor(repGuid string) auctiontypes.RepAddress {
+	return addressMap[repGuid]
+}
 
 var _ = AfterEach(func() {
 	serverA.Close()

@@ -65,7 +65,7 @@ var reports []*visualization.Report
 var sessionsToTerminate []*gexec.Session
 var natsRunner *natsrunner.NATSRunner
 var client auctiontypes.SimulationRepPoolClient
-var repGuids []string
+var repAddresses []auctiontypes.RepAddress
 var reportName string
 
 var disableSVGReport bool
@@ -105,7 +105,7 @@ var _ = BeforeSuite(func() {
 	hosts := []string{}
 	switch communicationMode {
 	case InProcess:
-		client, repGuids = buildInProcessReps()
+		client, repAddresses = buildInProcessReps()
 		if auctioneerMode == ExternalAuctioneerMode {
 			panic("it doesn't make sense to use external auctioneers when the reps are in-process")
 		}
@@ -115,34 +115,31 @@ var _ = BeforeSuite(func() {
 
 		client, err = auction_nats_client.New(natsRunner.MessageBus, timeout, logger)
 		Ω(err).ShouldNot(HaveOccurred())
-		repGuids = launchExternalNATSReps(natsAddrs)
+		repAddresses = launchExternalNATSReps(natsAddrs)
 		if auctioneerMode == ExternalAuctioneerMode {
 			hosts = launchExternalNATSAuctioneers(natsAddrs)
 		}
 		mode = "NATS"
 	case HTTP:
-		var addressLookupTable map[string]string
-		repGuids, addressLookupTable = launchExternalHTTPReps()
+		repAddresses = launchExternalHTTPReps()
 
-		addressLookup := auction_http_client.AddressLookupFromMap(addressLookupTable)
-
-		client = auction_http_client.New(http.DefaultClient, logger, addressLookup)
+		client = auction_http_client.New(http.DefaultClient, logger)
 		if auctioneerMode == ExternalAuctioneerMode {
-			hosts = launchExternalHTTPAuctioneers(addressLookupTable)
+			hosts = launchExternalHTTPAuctioneers()
 		}
 		mode = "HTTP"
 	case DiegoNATSCommunicationMode, DiegoHTTPCommunicationMode:
-		repGuids = []string{}
+		repAddresses = []auctiontypes.RepAddress{}
 		for i := 1; i <= 100; i++ {
-			repGuids = append(repGuids, fmt.Sprintf("rep-lite-%d", i))
-		}
-		addressLookup := func(repGuid string) (string, error) {
-			return fmt.Sprintf("http://%s.diego-1.cf-app.com", repGuid), nil
+			repAddresses = append(repAddresses, auctiontypes.RepAddress{
+				RepGuid: fmt.Sprintf("rep-lite-%d", i),
+				Address: fmt.Sprintf("http://rep-lite-%d.diego-1.cf-app.com", i),
+			})
 		}
 		for i := 1; i <= 100; i++ {
 			hosts = append(hosts, fmt.Sprintf("auctioneer-lite-%d.diego-1.cf-app.com", i))
 		}
-		client = auction_http_client.New(http.DefaultClient, logger, addressLookup)
+		client = auction_http_client.New(http.DefaultClient, logger)
 		auctioneerMode = ExternalAuctioneerMode
 		if communicationMode == DiegoNATSCommunicationMode {
 			mode = "NATS"
@@ -162,11 +159,11 @@ var _ = BeforeSuite(func() {
 
 var _ = BeforeEach(func() {
 	wg := &sync.WaitGroup{}
-	wg.Add(len(repGuids))
-	for _, repGuid := range repGuids {
-		repGuid := repGuid
+	wg.Add(len(repAddresses))
+	for _, repAddress := range repAddresses {
+		repAddress := repAddress
 		go func() {
-			client.Reset(repGuid)
+			client.Reset(repAddress)
 			wg.Done()
 		}()
 	}
@@ -190,23 +187,25 @@ var _ = AfterSuite(func() {
 	}
 })
 
-func buildInProcessReps() (auctiontypes.SimulationRepPoolClient, []string) {
+func buildInProcessReps() (auctiontypes.SimulationRepPoolClient, []auctiontypes.RepAddress) {
 	inprocess.LatencyMin = LatencyMin
 	inprocess.LatencyMax = LatencyMax
 
-	repGuids := []string{}
+	repAddresses := []auctiontypes.RepAddress{}
 	repMap := map[string]*auctionrep.AuctionRep{}
 
 	for i := 0; i < numReps; i++ {
 		repGuid := util.NewGuid("REP")
-		repGuids = append(repGuids, repGuid)
+		repAddresses = append(repAddresses, auctiontypes.RepAddress{
+			RepGuid: repGuid,
+		})
 
 		repDelegate := simulationrepdelegate.New(repResources)
 		repMap[repGuid] = auctionrep.New(repGuid, repDelegate)
 	}
 
 	client := inprocess.New(repMap)
-	return client, repGuids
+	return client, repAddresses
 }
 
 func startNATS() string {
@@ -217,11 +216,11 @@ func startNATS() string {
 	return strings.Join(natsAddrs, ",")
 }
 
-func launchExternalNATSReps(natsAddrs string) []string {
+func launchExternalNATSReps(natsAddrs string) []auctiontypes.RepAddress {
 	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/repnode")
 	Ω(err).ShouldNot(HaveOccurred())
 
-	repGuids := []string{}
+	repAddresses := []auctiontypes.RepAddress{}
 
 	for i := 0; i < numReps; i++ {
 		repGuid := util.NewGuid("REP")
@@ -240,18 +239,19 @@ func launchExternalNATSReps(natsAddrs string) []string {
 		Eventually(sess).Should(gbytes.Say("listening"))
 		sessionsToTerminate = append(sessionsToTerminate, sess)
 
-		repGuids = append(repGuids, repGuid)
+		repAddresses = append(repAddresses, auctiontypes.RepAddress{
+			RepGuid: repGuid,
+		})
 	}
 
-	return repGuids
+	return repAddresses
 }
 
-func launchExternalHTTPReps() ([]string, map[string]string) {
+func launchExternalHTTPReps() []auctiontypes.RepAddress {
 	repNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/repnode")
 	Ω(err).ShouldNot(HaveOccurred())
 
-	repGuids := []string{}
-	addressLookupTable := map[string]string{}
+	repAddresses := []auctiontypes.RepAddress{}
 
 	for i := 0; i < numReps; i++ {
 		repGuid := util.NewGuid("REP")
@@ -271,11 +271,13 @@ func launchExternalHTTPReps() ([]string, map[string]string) {
 		sessionsToTerminate = append(sessionsToTerminate, sess)
 		Eventually(sess).Should(gbytes.Say("listening"))
 
-		repGuids = append(repGuids, repGuid)
-		addressLookupTable[repGuid] = "http://" + httpAddr
+		repAddresses = append(repAddresses, auctiontypes.RepAddress{
+			RepGuid: repGuid,
+			Address: "http://" + httpAddr,
+		})
 	}
 
-	return repGuids, addressLookupTable
+	return repAddresses
 }
 
 func launchExternalNATSAuctioneers(natsAddrs string) []string {
@@ -302,11 +304,8 @@ func launchExternalNATSAuctioneers(natsAddrs string) []string {
 	return auctioneerHosts
 }
 
-func launchExternalHTTPAuctioneers(addressLookupTable map[string]string) []string {
+func launchExternalHTTPAuctioneers() []string {
 	auctioneerNodeBinary, err := gexec.Build("github.com/cloudfoundry-incubator/auction/simulation/local/auctioneernode")
-	Ω(err).ShouldNot(HaveOccurred())
-
-	encodedAddressLookupTable, err := json.Marshal(addressLookupTable)
 	Ω(err).ShouldNot(HaveOccurred())
 
 	auctioneerHosts := []string{}
@@ -314,7 +313,6 @@ func launchExternalHTTPAuctioneers(addressLookupTable map[string]string) []strin
 		port := 48710 + i
 		auctioneerCmd := exec.Command(
 			auctioneerNodeBinary,
-			"-httpLookup", string(encodedAddressLookupTable),
 			"-timeout", fmt.Sprintf("%s", timeout),
 			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
 		)

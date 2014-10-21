@@ -15,9 +15,8 @@ import (
 	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_client"
 
 	"github.com/cloudfoundry/gunk/timeprovider"
+	"github.com/cloudfoundry/gunk/workpool"
 	"github.com/cloudfoundry/yagnats"
-
-	"github.com/cloudfoundry/storeadapter/workerpool"
 
 	"github.com/cloudfoundry/storeadapter/etcdstoreadapter"
 
@@ -40,7 +39,7 @@ var lookupTable map[string]string
 var lookupTableLock *sync.RWMutex
 
 func FetchLookupTable() {
-	store := etcdstoreadapter.NewETCDStoreAdapter(strings.Split(*etcdCluster, ","), workerpool.NewWorkerPool(10))
+	store := etcdstoreadapter.NewETCDStoreAdapter(strings.Split(*etcdCluster, ","), workpool.NewWorkPool(10))
 	store.Connect()
 	BBS := bbs.NewBBS(store, timeprovider.NewTimeProvider(), cf_lager.New("auctioneer-bbs"))
 
@@ -75,6 +74,23 @@ func AddressLookup(repGuid string) (string, error) {
 	return address, nil
 }
 
+func transformRepAddresses(repAddresses []auctiontypes.RepAddress) []auctiontypes.RepAddress {
+	transformed := []auctiontypes.RepAddress{}
+	for _, repAddress := range repAddresses {
+		address, err := AddressLookup(repAddress.RepGuid)
+		if err != nil {
+			fmt.Println(err.Error())
+			continue
+		}
+		transformed = append(transformed, auctiontypes.RepAddress{
+			RepGuid: repAddress.RepGuid,
+			Address: address,
+		})
+	}
+
+	return transformed
+}
+
 func main() {
 	flag.Parse()
 	lookupTableLock = &sync.RWMutex{}
@@ -90,7 +106,7 @@ func main() {
 	var repHTTPClient auctiontypes.RepPoolClient
 	repHTTPClient = auction_http_client.New(&http.Client{
 		Timeout: *timeout,
-	}, cf_lager.New("auctioneer-http"), AddressLookup)
+	}, cf_lager.New("auctioneer-http"))
 
 	http.HandleFunc("/start-auction", func(w http.ResponseWriter, r *http.Request) {
 		var auctionRequest auctiontypes.StartAuctionRequest
@@ -100,9 +116,13 @@ func main() {
 			return
 		}
 
-		repClient := repHTTPClient
+		var repClient auctiontypes.RepPoolClient
 		if r.URL.Query().Get("mode") == "NATS" {
 			repClient = repNATSClient
+		} else {
+			//for http, lookup the direct address to the rep-lite
+			auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
+			repClient = repHTTPClient
 		}
 
 		auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
@@ -119,9 +139,13 @@ func main() {
 			return
 		}
 
-		repClient := repHTTPClient
+		var repClient auctiontypes.RepPoolClient
 		if r.URL.Query().Get("mode") == "NATS" {
 			repClient = repNATSClient
+		} else {
+			//for http, lookup the direct address to the rep-lite
+			auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
+			repClient = repHTTPClient
 		}
 
 		auctionResult, _ := auctionrunner.New(repClient).RunLRPStopAuction(auctionRequest)
