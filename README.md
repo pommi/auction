@@ -287,8 +287,10 @@ cat > desired_lrp_auctioneer-lite.json <<EOF
 EOF
 
 for i in {1..100}; do sed "s/rep-lite-1/rep-lite-$i/g" desired_lrp_rep-lite.json > temp.json; veritas submit-lrp temp.json; done
-
 for i in {1..100}; do sed "s/auctioneer-lite-1/auctioneer-lite-$i/g" desired_lrp_auctioneer-lite.json > temp.json; veritas submit-lrp temp.json; done
+
+for i in {1..100}; do veritas remove-lrp rep-lite-$i; done
+for i in {1..100}; do veritas remove-lrp auctioneer-lite-$i; done
 ```
 
 3. Once this is done, you can run `ginkgo -- --communicationMode=diego --auctioneerMode=external` to run the simulation on the cluster!

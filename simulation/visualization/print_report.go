@@ -3,6 +3,7 @@ package visualization
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
@@ -21,6 +22,11 @@ const purpleColor = "\x1b[35m"
 
 func init() {
 	format.UseStringerRepresentation = true
+}
+
+type ReportData struct {
+	Instances      []auctiontypes.SimulatedInstance
+	TotalResources auctiontypes.Resources
 }
 
 func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiontypes.StartAuctionResult, representatives []auctiontypes.RepAddress, duration time.Duration, rules auctiontypes.StartAuctionRules) {
@@ -47,6 +53,8 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 	}
 
 	///
+	fmt.Println("Fetching Data...")
+	reportData := prefetchReportData(client, representatives)
 
 	fmt.Println("Distribution")
 	maxGuidLength := 0
@@ -62,7 +70,7 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 		repString := fmt.Sprintf(guidFormat, repAddress.RepGuid)
 
 		instanceString := ""
-		instances := client.SimulatedInstances(repAddress)
+		instances := reportData[repAddress.RepGuid].Instances
 
 		availableColors := []string{"red", "cyan", "yellow", "gray", "purple", "green"}
 		colorLookup := map[string]string{"red": redColor, "green": greenColor, "cyan": cyanColor, "yellow": yellowColor, "gray": lightGrayColor, "purple": purpleColor}
@@ -87,7 +95,7 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 			instanceString += strings.Repeat(colorLookup[col]+"-"+defaultStyle, originalCounts[col])
 			instanceString += strings.Repeat(colorLookup[col]+"+"+defaultStyle, newCounts[col])
 		}
-		instanceString += strings.Repeat(grayColor+"."+defaultStyle, client.TotalResources(repAddress).MemoryMB-totalUsage)
+		instanceString += strings.Repeat(grayColor+"."+defaultStyle, reportData[repAddress.RepGuid].TotalResources.MemoryMB-totalUsage)
 
 		fmt.Printf("  %s: %s\n", repString, instanceString)
 	}
@@ -150,6 +158,28 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 			fmt.Printf("Starting at %s, %s took %s:\n%s\n", result.AuctionStartTime.Sub(firstAuctionTime), result.LRPStartAuction.InstanceGuid, result.Duration, format.Object(result.Events, 1))
 		}
 	}
+}
+
+func prefetchReportData(client auctiontypes.SimulationRepPoolClient, representatives []auctiontypes.RepAddress) map[string]ReportData {
+	wg := &sync.WaitGroup{}
+	wg.Add(len(representatives))
+	reportDataLock := &sync.Mutex{}
+	reportData := map[string]ReportData{}
+	for _, repAddress := range representatives {
+		go func(repAddress auctiontypes.RepAddress) {
+			instances := client.SimulatedInstances(repAddress)
+			resources := client.TotalResources(repAddress)
+			reportDataLock.Lock()
+			reportData[repAddress.RepGuid] = ReportData{
+				Instances:      instances,
+				TotalResources: resources,
+			}
+			reportDataLock.Unlock()
+			wg.Done()
+		}(repAddress)
+	}
+	wg.Wait()
+	return reportData
 }
 
 func StatsForDurations(durations []time.Duration) (time.Duration, time.Duration, time.Duration) {

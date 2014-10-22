@@ -130,13 +130,13 @@ var _ = BeforeSuite(func() {
 		mode = "HTTP"
 	case DiegoNATSCommunicationMode, DiegoHTTPCommunicationMode:
 		repAddresses = []auctiontypes.RepAddress{}
-		for i := 1; i <= 100; i++ {
+		for i := 1; i <= numReps; i++ {
 			repAddresses = append(repAddresses, auctiontypes.RepAddress{
 				RepGuid: fmt.Sprintf("rep-lite-%d", i),
 				Address: fmt.Sprintf("http://rep-lite-%d.diego-1.cf-app.com", i),
 			})
 		}
-		for i := 1; i <= 100; i++ {
+		for i := 1; i <= numAuctioneers; i++ {
 			hosts = append(hosts, fmt.Sprintf("auctioneer-lite-%d.diego-1.cf-app.com", i))
 		}
 		client = auction_http_client.New(http.DefaultClient, logger)
