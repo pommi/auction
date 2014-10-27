@@ -10,6 +10,7 @@ import (
 	"github.com/cheggaaa/pb"
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
 	"github.com/cloudfoundry-incubator/runtime-schema/models"
+	"github.com/cloudfoundry/gunk/workpool"
 )
 
 type externalAuctionDistributor struct {
@@ -36,36 +37,51 @@ func (d *externalAuctionDistributor) HoldStartAuctions(numAuctioneers int, start
 
 	bar := pb.StartNew(len(startAuctions))
 
-	results := []auctiontypes.StartAuctionResult{}
-	lock := &sync.Mutex{}
+	workPool := workpool.NewWorkPool(50)
+
 	wg := &sync.WaitGroup{}
 	wg.Add(len(groupedRequests))
 	for i := range groupedRequests {
-		go func(i int) {
+		i := i
+		workPool.Submit(func() {
 			defer wg.Done()
 			payload, _ := json.Marshal(groupedRequests[i])
-			res, err := http.Post("http://"+d.hosts[i]+"/start-auctions?mode="+d.auctionCommunicationMode, "application/json", bytes.NewReader(payload))
+			_, err := http.Post("http://"+d.hosts[i]+"/start-auctions?mode="+d.auctionCommunicationMode, "application/json", bytes.NewReader(payload))
 			if err != nil {
 				fmt.Println("Failed to run auctions on index", i, err.Error())
 				return
 			}
-			defer res.Body.Close()
-			decoder := json.NewDecoder(res.Body)
-			for {
-				result := auctiontypes.StartAuctionResult{}
-				err = decoder.Decode(&result)
-				if err != nil {
-					break
-				}
-				lock.Lock()
-				results = append(results, result)
-				bar.Set(len(results))
-				lock.Unlock()
-			}
-		}(i)
+		})
 	}
 
 	wg.Wait()
+
+	results := []auctiontypes.StartAuctionResult{}
+	for {
+		stillGoing := false
+		for i := range groupedRequests {
+			res, err := http.Get("http://" + d.hosts[i] + "/start-auctions-results")
+			if err != nil {
+				fmt.Println("Failed to get auctions on index", i, err.Error())
+			}
+			result := []auctiontypes.StartAuctionResult{}
+			err = json.NewDecoder(res.Body).Decode(&result)
+			if err != nil {
+				res.Body.Close()
+				fmt.Println("Failed to decode results", err.Error())
+				continue
+			}
+
+			stillGoing = stillGoing || (res.StatusCode == http.StatusOK)
+			results = append(results, result...)
+			bar.Set(len(results))
+			res.Body.Close()
+		}
+		if !stillGoing {
+			break
+		}
+	}
+
 	bar.Finish()
 	return results
 }

@@ -54,6 +54,10 @@ func main() {
 		return repClient
 	}
 
+	lock := &sync.Mutex{}
+	results := []auctiontypes.StartAuctionResult{}
+	done := false
+
 	http.HandleFunc("/start-auctions", func(w http.ResponseWriter, r *http.Request) {
 		var auctionRequests []auctiontypes.StartAuctionRequest
 		err := json.NewDecoder(r.Body).Decode(&auctionRequests)
@@ -64,23 +68,38 @@ func main() {
 
 		repClient := getCommunicationMode(r)
 
-		lock := &sync.Mutex{}
 		wg := &sync.WaitGroup{}
 		wg.Add(len(auctionRequests))
-		w.WriteHeader(http.StatusOK)
-		encoder := json.NewEncoder(w)
 		for _, auctionRequest := range auctionRequests {
 			auctionRequest := auctionRequest
 			workers.Submit(func() {
 				auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
 				lock.Lock()
-				encoder.Encode(auctionResult)
+				results = append(results, auctionResult)
 				lock.Unlock()
 				wg.Done()
 			})
 		}
 
 		wg.Wait()
+		lock.Lock()
+		done = true
+		lock.Unlock()
+	})
+
+	http.HandleFunc("/start-auctions-results", func(w http.ResponseWriter, r *http.Request) {
+		var statusCode int
+		lock.Lock()
+		if done {
+			statusCode = http.StatusCreated
+		} else {
+			statusCode = http.StatusOK
+		}
+		payload, _ := json.Marshal(results)
+		results = []auctiontypes.StartAuctionResult{}
+		lock.Unlock()
+		w.WriteHeader(statusCode)
+		w.Write(payload)
 	})
 
 	http.HandleFunc("/stop-auctions", func(w http.ResponseWriter, r *http.Request) {
