@@ -17,7 +17,7 @@ import (
 const border = 5
 const instanceSize = 4
 const instanceSpacing = 1
-const instanceBoxHeight = instanceSize*400 + instanceSpacing*99
+const instanceBoxHeight = instanceSize*100 + instanceSpacing*99
 const instanceBoxWidth = instanceSize*100 + instanceSpacing*99
 
 const headerHeight = 80

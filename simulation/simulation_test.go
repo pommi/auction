@@ -1,6 +1,8 @@
 package simulation_test
 
 import (
+	"time"
+
 	"github.com/cloudfoundry-incubator/auction/auctionrunner"
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
 	"github.com/cloudfoundry-incubator/auction/simulation/visualization"
@@ -79,6 +81,21 @@ var _ = Describe("Auction", func() {
 		return instances
 	}
 
+	runStartAuction := func(startAuctions []models.LRPStartAuction, nCells int, i int, j int) {
+		t := time.Now()
+		results := auctionDistributor.HoldStartAuctions(nCells, startAuctions, repAddresses[:nCells], auctionrunner.DefaultStartAuctionRules)
+		duration := time.Since(t)
+		report := &visualization.Report{
+			RepAddresses:    repAddresses[:nCells],
+			AuctionResults:  results,
+			InstancesByRep:  visualization.FetchAndSortInstances(client, repAddresses[:nCells]),
+			AuctionDuration: duration,
+		}
+		visualization.PrintReport(client, len(startAuctions), results, repAddresses[:nCells], duration, auctionrunner.DefaultStartAuctionRules)
+		svgReport.DrawReportCard(i, j, report)
+		reports = append(reports, report)
+	}
+
 	BeforeEach(func() {
 		util.ResetGuids()
 		initialDistributions = map[int][]auctiontypes.SimulatedInstance{}
@@ -100,10 +117,7 @@ var _ = Describe("Auction", func() {
 
 					instances := generateUniqueLRPStartAuctions(napps, 1)
 
-					report := auctionDistributor.HoldAuctionsFor(instances, repAddresses[:nexecutors], auctionrunner.DefaultStartAuctionRules, maxConcurrentPerExecutor*nexecutors)
-					visualization.PrintReport(client, report.AuctionResults, repAddresses[:nexecutors], report.AuctionDuration, auctionrunner.DefaultStartAuctionRules)
-					svgReport.DrawReportCard(repeat, 0, report)
-					reports = append(reports, report)
+					runStartAuction(instances, nexecutors, repeat, 0)
 				})
 
 				It("should distribute evenly for a small distribution", func() {
@@ -112,19 +126,16 @@ var _ = Describe("Auction", func() {
 
 					instances := generateUniqueLRPStartAuctions(napps, 1)
 
-					report := auctionDistributor.HoldAuctionsFor(instances, repAddresses[:nexecutors], auctionrunner.DefaultStartAuctionRules, maxConcurrentPerExecutor*nexecutors)
-					visualization.PrintReport(client, report.AuctionResults, repAddresses[:nexecutors], report.AuctionDuration, auctionrunner.DefaultStartAuctionRules)
-					svgReport.DrawReportCard(repeat, 1, report)
-					reports = append(reports, report)
+					runStartAuction(instances, nexecutors, repeat, 1)
 				})
 			}
 		})
 
 		Context("Large Cold Starts", func() {
-			nexecutors := []int{25, 100}
-			n1apps := []int{1800, 7000}
-			n2apps := []int{200, 1000}
-			n4apps := []int{50, 200}
+			nexecutors := []int{25, 4 * 25}
+			n1apps := []int{1800, 4 * 1800}
+			n2apps := []int{200, 4 * 200}
+			n4apps := []int{50, 4 * 50}
 			for i := range nexecutors {
 				i := i
 				Context("with single-instance and multi-instance apps", func() {
@@ -144,12 +155,7 @@ var _ = Describe("Auction", func() {
 							permutedInstances[i] = instances[index]
 						}
 
-						report := auctionDistributor.HoldAuctionsFor(instances, repAddresses[:nexecutors[i]], auctionrunner.DefaultStartAuctionRules, maxConcurrentPerExecutor*nexecutors[i])
-
-						visualization.PrintReport(client, report.AuctionResults, repAddresses[:nexecutors[i]], report.AuctionDuration, auctionrunner.DefaultStartAuctionRules)
-
-						svgReport.DrawReportCard(i, 2, report)
-						reports = append(reports, report)
+						runStartAuction(permutedInstances, nexecutors[i], i, 2)
 					})
 				})
 			}
@@ -172,12 +178,7 @@ var _ = Describe("Auction", func() {
 					It("should distribute evenly", func() {
 						instances := generateUniqueLRPStartAuctions(napps[i], 1)
 
-						report := auctionDistributor.HoldAuctionsFor(instances, repAddresses[:nexecutors[i]], auctionrunner.DefaultStartAuctionRules, maxConcurrentPerExecutor*nexecutors[i])
-
-						visualization.PrintReport(client, report.AuctionResults, repAddresses[:nexecutors[i]], report.AuctionDuration, auctionrunner.DefaultStartAuctionRules)
-
-						svgReport.DrawReportCard(i+2, 2, report)
-						reports = append(reports, report)
+						runStartAuction(instances, nexecutors[i], i+2, 2)
 					})
 				})
 			}
@@ -200,12 +201,7 @@ var _ = Describe("Auction", func() {
 					It("should distribute evenly", func() {
 						instances := generateLRPStartAuctionsForProcessGuid(napps[i], "red", 1)
 
-						report := auctionDistributor.HoldAuctionsFor(instances, repAddresses[:nexecutors[i]], auctionrunner.DefaultStartAuctionRules, maxConcurrentPerExecutor*nexecutors[i])
-
-						visualization.PrintReport(client, report.AuctionResults, repAddresses[:nexecutors[i]], report.AuctionDuration, auctionrunner.DefaultStartAuctionRules)
-
-						svgReport.DrawReportCard(i, 3, report)
-						reports = append(reports, report)
+						runStartAuction(instances, nexecutors[i], i, 3)
 					})
 				})
 			}
@@ -231,7 +227,7 @@ var _ = Describe("Auction", func() {
 						},
 					}
 
-					results := auctionDistributor.HoldStopAuctions(stopAuctions, repAddresses)
+					results := auctionDistributor.HoldStopAuctions(numAuctioneers, stopAuctions, repAddresses)
 					Ω(results).Should(HaveLen(1))
 					Ω(results[0].Winner).Should(Equal(repAddresses[1].RepGuid))
 
@@ -261,7 +257,7 @@ var _ = Describe("Auction", func() {
 						},
 					}
 
-					results := auctionDistributor.HoldStopAuctions(stopAuctions, repAddresses)
+					results := auctionDistributor.HoldStopAuctions(numAuctioneers, stopAuctions, repAddresses)
 					Ω(results).Should(HaveLen(1))
 					Ω(results[0].Winner).Should(Equal(repAddresses[0].RepGuid))
 
@@ -290,7 +286,7 @@ var _ = Describe("Auction", func() {
 						},
 					}
 
-					results := auctionDistributor.HoldStopAuctions(stopAuctions, repAddresses)
+					results := auctionDistributor.HoldStopAuctions(numAuctioneers, stopAuctions, repAddresses)
 					Ω(results).Should(HaveLen(1))
 					Ω(results[0].Winner).Should(Equal(repAddresses[1].RepGuid))
 
@@ -322,7 +318,7 @@ var _ = Describe("Auction", func() {
 						},
 					}
 
-					results := auctionDistributor.HoldStopAuctions(stopAuctions, repAddresses)
+					results := auctionDistributor.HoldStopAuctions(numAuctioneers, stopAuctions, repAddresses)
 					Ω(results).Should(HaveLen(1))
 					Ω(results[0].Winner).Should(Equal(repAddresses[1].RepGuid))
 

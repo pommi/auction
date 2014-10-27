@@ -34,6 +34,7 @@ var etcdCluster = flag.String("etcdCluster", "", "etcd cluster")
 var natsUsername = flag.String("natsUsername", "", "nats username")
 var natsPassword = flag.String("natsPassword", "", "nats password")
 var natsAddresses = flag.String("natsAddresses", "", "nats addresses")
+var maxConcurrent = flag.Int("maxConcurrent", 20, "max concurrent auctions")
 
 var lookupTable map[string]string
 var lookupTableLock *sync.RWMutex
@@ -108,50 +109,83 @@ func main() {
 		Timeout: *timeout,
 	}, cf_lager.New("auctioneer-http"))
 
-	http.HandleFunc("/start-auction", func(w http.ResponseWriter, r *http.Request) {
-		var auctionRequest auctiontypes.StartAuctionRequest
-		err := json.NewDecoder(r.Body).Decode(&auctionRequest)
+	workers := workpool.NewWorkPool(*maxConcurrent)
+
+	getCommunicationMode := func(r *http.Request) (auctiontypes.RepPoolClient, bool) {
+		var httpMode bool
+		var repClient auctiontypes.RepPoolClient
+		if r.URL.Query().Get("mode") == "NATS" {
+			repClient = repNATSClient
+			httpMode = false
+		} else {
+			repClient = repHTTPClient
+			httpMode = true
+		}
+		return repClient, httpMode
+	}
+
+	http.HandleFunc("/start-auctions", func(w http.ResponseWriter, r *http.Request) {
+		var auctionRequests []auctiontypes.StartAuctionRequest
+		err := json.NewDecoder(r.Body).Decode(&auctionRequests)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		var repClient auctiontypes.RepPoolClient
-		if r.URL.Query().Get("mode") == "NATS" {
-			repClient = repNATSClient
-		} else {
-			//for http, lookup the direct address to the rep-lite
-			auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
-			repClient = repHTTPClient
+		repClient, httpMode := getCommunicationMode(r)
+
+		lock := &sync.Mutex{}
+		wg := &sync.WaitGroup{}
+		wg.Add(len(auctionRequests))
+		w.WriteHeader(http.StatusOK)
+		encoder := json.NewEncoder(w)
+		for _, auctionRequest := range auctionRequests {
+			auctionRequest := auctionRequest
+			workers.Submit(func() {
+				if httpMode {
+					auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
+				}
+				auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
+				lock.Lock()
+				encoder.Encode(auctionResult)
+				lock.Unlock()
+				wg.Done()
+			})
 		}
 
-		auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(auctionResult)
+		wg.Wait()
 	})
 
-	http.HandleFunc("/stop-auction", func(w http.ResponseWriter, r *http.Request) {
-		var auctionRequest auctiontypes.StopAuctionRequest
-		err := json.NewDecoder(r.Body).Decode(&auctionRequest)
+	http.HandleFunc("/stop-auctions", func(w http.ResponseWriter, r *http.Request) {
+		var auctionRequests []auctiontypes.StopAuctionRequest
+		err := json.NewDecoder(r.Body).Decode(&auctionRequests)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		var repClient auctiontypes.RepPoolClient
-		if r.URL.Query().Get("mode") == "NATS" {
-			repClient = repNATSClient
-		} else {
-			//for http, lookup the direct address to the rep-lite
-			auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
-			repClient = repHTTPClient
+		repClient, httpMode := getCommunicationMode(r)
+
+		lock := &sync.Mutex{}
+		wg := &sync.WaitGroup{}
+		wg.Add(len(auctionRequests))
+		w.WriteHeader(http.StatusOK)
+		encoder := json.NewEncoder(w)
+		for _, auctionRequest := range auctionRequests {
+			auctionRequest := auctionRequest
+			workers.Submit(func() {
+				if httpMode {
+					auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
+				}
+				auctionResult, _ := auctionrunner.New(repClient).RunLRPStopAuction(auctionRequest)
+				lock.Lock()
+				encoder.Encode(auctionResult)
+				lock.Unlock()
+				wg.Done()
+			})
 		}
 
-		auctionResult, _ := auctionrunner.New(repClient).RunLRPStopAuction(auctionRequest)
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(auctionResult)
+		wg.Wait()
 	})
 
 	http.HandleFunc("/routes", func(w http.ResponseWriter, r *http.Request) {

@@ -103,7 +103,7 @@ cat > desired_lrp_rep-lite.json <<EOF
             "from":"http://onsi-public.s3.amazonaws.com/rep-lite.tar.gz",
             "to":".",
             "extract":true,
-            "cache_key":""
+            "cache_key":"rep-lite"
          }
       },
       {  
@@ -202,7 +202,7 @@ cat > desired_lrp_auctioneer-lite.json <<EOF
             "from":"http://onsi-public.s3.amazonaws.com/auctioneer-lite.tar.gz",
             "to":".",
             "extract":true,
-            "cache_key":""
+            "cache_key":"auctioneer-lite"
          }
       },
       {  

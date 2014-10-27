@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudfoundry-incubator/auction/communication/http/auction_http_client"
 	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_client"
+	"github.com/cloudfoundry/gunk/workpool"
 	"github.com/cloudfoundry/yagnats"
 
 	"github.com/cloudfoundry-incubator/auction/auctionrunner"
@@ -22,6 +24,7 @@ import (
 var natsAddrs = flag.String("natsAddrs", "", "nats server addresses")
 var timeout = flag.Duration("timeout", time.Second, "timeout for nats responses")
 var httpAddr = flag.String("httpAddr", "", "http address to listen on")
+var maxConcurrent = flag.Int("maxConcurrent", 20, "max concurrent auctions")
 
 var errorResponse = []byte("error")
 
@@ -39,42 +42,74 @@ func main() {
 		Timeout: *timeout,
 	}, cf_lager.New("auctioneer-http"))
 
-	http.HandleFunc("/start-auction", func(w http.ResponseWriter, r *http.Request) {
-		var auctionRequest auctiontypes.StartAuctionRequest
-		err := json.NewDecoder(r.Body).Decode(&auctionRequest)
+	workers := workpool.NewWorkPool(*maxConcurrent)
+
+	getCommunicationMode := func(r *http.Request) auctiontypes.RepPoolClient {
+		var repClient auctiontypes.RepPoolClient
+		if r.URL.Query().Get("mode") == "NATS" {
+			repClient = repNATSClient
+		} else {
+			repClient = repHTTPClient
+		}
+		return repClient
+	}
+
+	http.HandleFunc("/start-auctions", func(w http.ResponseWriter, r *http.Request) {
+		var auctionRequests []auctiontypes.StartAuctionRequest
+		err := json.NewDecoder(r.Body).Decode(&auctionRequests)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		repClient := repHTTPClient
-		if r.URL.Query().Get("mode") == "NATS" {
-			repClient = repNATSClient
+		repClient := getCommunicationMode(r)
+
+		lock := &sync.Mutex{}
+		wg := &sync.WaitGroup{}
+		wg.Add(len(auctionRequests))
+		w.WriteHeader(http.StatusOK)
+		encoder := json.NewEncoder(w)
+		for _, auctionRequest := range auctionRequests {
+			auctionRequest := auctionRequest
+			workers.Submit(func() {
+				auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
+				lock.Lock()
+				encoder.Encode(auctionResult)
+				lock.Unlock()
+				wg.Done()
+			})
 		}
 
-		auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(auctionResult)
+		wg.Wait()
 	})
 
-	http.HandleFunc("/stop-auction", func(w http.ResponseWriter, r *http.Request) {
-		var auctionRequest auctiontypes.StopAuctionRequest
-		err := json.NewDecoder(r.Body).Decode(&auctionRequest)
+	http.HandleFunc("/stop-auctions", func(w http.ResponseWriter, r *http.Request) {
+		var auctionRequests []auctiontypes.StopAuctionRequest
+		err := json.NewDecoder(r.Body).Decode(&auctionRequests)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		repClient := repHTTPClient
-		if r.URL.Query().Get("mode") == "NATS" {
-			repClient = repNATSClient
+		repClient := getCommunicationMode(r)
+
+		lock := &sync.Mutex{}
+		wg := &sync.WaitGroup{}
+		wg.Add(len(auctionRequests))
+		w.WriteHeader(http.StatusOK)
+		encoder := json.NewEncoder(w)
+		for _, auctionRequest := range auctionRequests {
+			auctionRequest := auctionRequest
+			workers.Submit(func() {
+				auctionResult, _ := auctionrunner.New(repClient).RunLRPStopAuction(auctionRequest)
+				lock.Lock()
+				encoder.Encode(auctionResult)
+				lock.Unlock()
+				wg.Done()
+			})
 		}
 
-		auctionResult, _ := auctionrunner.New(repClient).RunLRPStopAuction(auctionRequest)
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(auctionResult)
+		wg.Wait()
 	})
 
 	fmt.Println("auctioneering")

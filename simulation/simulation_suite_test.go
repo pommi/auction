@@ -57,7 +57,7 @@ var repResources = auctiontypes.Resources{
 var maxConcurrentPerExecutor int
 
 var timeout time.Duration
-var auctionDistributor *auctiondistributor.AuctionDistributor
+var auctionDistributor auctiondistributor.AuctionDistributor
 
 var svgReport *visualization.SVGReport
 var reports []*visualization.Report
@@ -99,6 +99,10 @@ var _ = BeforeSuite(func() {
 
 	logger := lager.NewLogger("auction-sim")
 	logger.RegisterSink(lager.NewWriterSink(GinkgoWriter, lager.DEBUG))
+
+	if auctioneerMode != InProcess && auctioneerMode != ExternalAuctioneerMode {
+		panic(fmt.Sprintf("don't know about auctioneerMode: %s", auctioneerMode))
+	}
 
 	sessionsToTerminate = []*gexec.Session{}
 	var mode string
@@ -151,9 +155,9 @@ var _ = BeforeSuite(func() {
 	}
 
 	if auctioneerMode == InProcess {
-		auctionDistributor = auctiondistributor.NewInProcessAuctionDistributor(client)
+		auctionDistributor = auctiondistributor.NewInProcessAuctionDistributor(client, maxConcurrentPerExecutor)
 	} else if auctioneerMode == ExternalAuctioneerMode {
-		auctionDistributor = auctiondistributor.NewRemoteAuctionDistributor(hosts, client, mode)
+		auctionDistributor = auctiondistributor.NewExternalAuctionDistributor(hosts, mode)
 	}
 })
 
@@ -292,6 +296,7 @@ func launchExternalNATSAuctioneers(natsAddrs string) []string {
 			"-natsAddrs", natsAddrs,
 			"-timeout", fmt.Sprintf("%s", timeout),
 			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
+			"-maxConcurrent", fmt.Sprintf("%d", maxConcurrentPerExecutor),
 		)
 		auctioneerHosts = append(auctioneerHosts, fmt.Sprintf("127.0.0.1:%d", port))
 
@@ -315,6 +320,7 @@ func launchExternalHTTPAuctioneers() []string {
 			auctioneerNodeBinary,
 			"-timeout", fmt.Sprintf("%s", timeout),
 			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
+			"-maxConcurrent", fmt.Sprintf("%d", maxConcurrentPerExecutor),
 		)
 		auctioneerHosts = append(auctioneerHosts, fmt.Sprintf("127.0.0.1:%d", port))
 

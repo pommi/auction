@@ -29,7 +29,11 @@ type ReportData struct {
 	TotalResources auctiontypes.Resources
 }
 
-func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiontypes.StartAuctionResult, representatives []auctiontypes.RepAddress, duration time.Duration, rules auctiontypes.StartAuctionRules) {
+func PrintReport(client auctiontypes.SimulationRepPoolClient, expectedAuctionCount int, results []auctiontypes.StartAuctionResult, representatives []auctiontypes.RepAddress, duration time.Duration, rules auctiontypes.StartAuctionRules) {
+	if len(results) == 0 {
+		fmt.Println("Got no results!")
+		return
+	}
 	roundsDistribution := map[int]int{}
 	roundsBiddingTimeDistributions := map[int][]time.Duration{}
 	auctionedInstances := map[string]bool{}
@@ -101,8 +105,7 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, results []auctiont
 	}
 
 	if numNew < len(auctionedInstances) {
-		expected := len(auctionedInstances)
-		fmt.Printf("%s!!!!MISSING INSTANCES!!!!  Expected %d, got %d (%.3f %% failure rate)%s", redColor, expected, numNew, float64(expected-numNew)/float64(expected), defaultStyle)
+		fmt.Printf("%s!!!!MISSING INSTANCES!!!!  Expected %d, got %d (%.3f %% failure rate)%s", redColor, expectedAuctionCount, numNew, float64(expectedAuctionCount-numNew)/float64(expectedAuctionCount), defaultStyle)
 	}
 
 	durations := []time.Duration{}
