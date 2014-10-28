@@ -286,11 +286,12 @@ cat > desired_lrp_auctioneer-lite.json <<EOF
 }
 EOF
 
-for i in {1..100}; do sed "s/rep-lite-1/rep-lite-$i/g" desired_lrp_rep-lite.json > temp.json; veritas submit-lrp temp.json; done
-for i in {1..100}; do sed "s/auctioneer-lite-1/auctioneer-lite-$i/g" desired_lrp_auctioneer-lite.json > temp.json; veritas submit-lrp temp.json; done
+for i in {1..300}; do sed "s/rep-lite-1/rep-lite-$i/g" desired_lrp_rep-lite.json > temp.json; veritas submit-lrp temp.json; done
+for i in {1..300}; do sed "s/auctioneer-lite-1/auctioneer-lite-$i/g" desired_lrp_auctioneer-lite.json > temp.json; veritas submit-lrp temp.json; done
 
-for i in {1..100}; do veritas remove-lrp rep-lite-$i; done
-for i in {1..100}; do veritas remove-lrp auctioneer-lite-$i; done
+for i in {1..300}; do veritas remove-lrp rep-lite-$i; done
+for i in {1..300}; do veritas remove-lrp auctioneer-lite-$i; done
 ```
 
 3. Once this is done, you can run `ginkgo -- --communicationMode=diego --auctioneerMode=external` to run the simulation on the cluster!
+4. Simulation/scenarios can run a number of different configurations on a diego cluster.  Deploy 300 auctioneers and 300 reps then `go run main.go` in that package and sit back and wait.

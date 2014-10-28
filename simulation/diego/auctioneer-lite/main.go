@@ -8,9 +8,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pivotal-golang/lager"
 
 	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_client"
 
@@ -26,7 +29,6 @@ import (
 
 	"github.com/cloudfoundry-incubator/auction/auctionrunner"
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
-	"github.com/cloudfoundry-incubator/cf-lager"
 )
 
 var timeout = flag.Duration("timeout", time.Second, "timeout for nats responses")
@@ -34,7 +36,6 @@ var etcdCluster = flag.String("etcdCluster", "", "etcd cluster")
 var natsUsername = flag.String("natsUsername", "", "nats username")
 var natsPassword = flag.String("natsPassword", "", "nats password")
 var natsAddresses = flag.String("natsAddresses", "", "nats addresses")
-var maxConcurrent = flag.Int("maxConcurrent", 20, "max concurrent auctions")
 
 var lookupTable map[string]string
 var lookupTableLock *sync.RWMutex
@@ -42,7 +43,7 @@ var lookupTableLock *sync.RWMutex
 func FetchLookupTable() {
 	store := etcdstoreadapter.NewETCDStoreAdapter(strings.Split(*etcdCluster, ","), workpool.NewWorkPool(10))
 	store.Connect()
-	BBS := bbs.NewBBS(store, timeprovider.NewTimeProvider(), cf_lager.New("auctioneer-bbs"))
+	BBS := bbs.NewBBS(store, timeprovider.NewTimeProvider(), lager.NewLogger("auctioneer-bbs"))
 
 	actuals, err := BBS.GetAllActualLRPs()
 	if err != nil {
@@ -107,9 +108,7 @@ func main() {
 	var repHTTPClient auctiontypes.RepPoolClient
 	repHTTPClient = auction_http_client.New(&http.Client{
 		Timeout: *timeout,
-	}, cf_lager.New("auctioneer-http"))
-
-	workers := workpool.NewWorkPool(*maxConcurrent)
+	}, lager.NewLogger("auctioneer-http"))
 
 	getCommunicationMode := func(r *http.Request) (auctiontypes.RepPoolClient, bool) {
 		var httpMode bool
@@ -140,9 +139,17 @@ func main() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		maxConcurrent, err := strconv.Atoi(r.URL.Query().Get("maxConcurrent"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 
+		repClient, httpMode := getCommunicationMode(r)
+
+		t := time.Now()
 		go func() {
-			repClient, httpMode := getCommunicationMode(r)
+			workers := workpool.NewWorkPool(maxConcurrent)
 
 			wg := &sync.WaitGroup{}
 			wg.Add(len(auctionRequests))
@@ -153,6 +160,7 @@ func main() {
 						auctionRequest.RepAddresses = transformRepAddresses(auctionRequest.RepAddresses)
 					}
 					auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
+					auctionResult.Duration = time.Since(t)
 					lock.Lock()
 					results = append(results, auctionResult)
 					lock.Unlock()
@@ -164,6 +172,7 @@ func main() {
 			lock.Lock()
 			done = true
 			lock.Unlock()
+			workers.Stop()
 		}()
 	})
 
@@ -190,7 +199,14 @@ func main() {
 			return
 		}
 
+		maxConcurrent, err := strconv.Atoi(r.URL.Query().Get("maxConcurrent"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
 		repClient, httpMode := getCommunicationMode(r)
+		workers := workpool.NewWorkPool(maxConcurrent)
 
 		lock := &sync.Mutex{}
 		wg := &sync.WaitGroup{}
@@ -198,6 +214,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		encoder := json.NewEncoder(w)
 		for _, auctionRequest := range auctionRequests {
+
 			auctionRequest := auctionRequest
 			workers.Submit(func() {
 				if httpMode {
@@ -212,6 +229,7 @@ func main() {
 		}
 
 		wg.Wait()
+		workers.Stop()
 	})
 
 	http.HandleFunc("/routes", func(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +261,7 @@ func connectToNATS() auctiontypes.RepPoolClient {
 			log.Fatalln("no nats:", err)
 		}
 
-		repClient, err := auction_nats_client.New(client, *timeout, cf_lager.New("auctioneer-nats"))
+		repClient, err := auction_nats_client.New(client, *timeout, lager.NewLogger("auctioneer-nats"))
 		if err != nil {
 			log.Fatalln("no rep client:", err)
 		}

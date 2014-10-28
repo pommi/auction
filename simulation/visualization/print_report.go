@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
+	"github.com/cloudfoundry/gunk/workpool"
 	"github.com/onsi/gomega/format"
 )
 
@@ -164,12 +165,14 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, expectedAuctionCou
 }
 
 func prefetchReportData(client auctiontypes.SimulationRepPoolClient, representatives []auctiontypes.RepAddress) map[string]ReportData {
+	workPool := workpool.NewWorkPool(50)
 	wg := &sync.WaitGroup{}
 	wg.Add(len(representatives))
 	reportDataLock := &sync.Mutex{}
 	reportData := map[string]ReportData{}
 	for _, repAddress := range representatives {
-		go func(repAddress auctiontypes.RepAddress) {
+		repAddress := repAddress
+		workPool.Submit(func() {
 			instances := client.SimulatedInstances(repAddress)
 			resources := client.TotalResources(repAddress)
 			reportDataLock.Lock()
@@ -179,9 +182,10 @@ func prefetchReportData(client auctiontypes.SimulationRepPoolClient, representat
 			}
 			reportDataLock.Unlock()
 			wg.Done()
-		}(repAddress)
+		})
 	}
 	wg.Wait()
+	workPool.Stop()
 	return reportData
 }
 

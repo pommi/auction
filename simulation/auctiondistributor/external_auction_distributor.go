@@ -16,12 +16,14 @@ import (
 type externalAuctionDistributor struct {
 	hosts                    []string
 	auctionCommunicationMode string
+	maxConcurrent            int
 }
 
-func NewExternalAuctionDistributor(hosts []string, auctionCommunicationMode string) AuctionDistributor {
+func NewExternalAuctionDistributor(hosts []string, maxConcurrent int, auctionCommunicationMode string) AuctionDistributor {
 	return &externalAuctionDistributor{
 		auctionCommunicationMode: auctionCommunicationMode,
-		hosts: hosts,
+		maxConcurrent:            maxConcurrent,
+		hosts:                    hosts,
 	}
 }
 
@@ -46,7 +48,8 @@ func (d *externalAuctionDistributor) HoldStartAuctions(numAuctioneers int, start
 		workPool.Submit(func() {
 			defer wg.Done()
 			payload, _ := json.Marshal(groupedRequests[i])
-			_, err := http.Post("http://"+d.hosts[i]+"/start-auctions?mode="+d.auctionCommunicationMode, "application/json", bytes.NewReader(payload))
+			url := fmt.Sprintf("http://%s/start-auctions?mode=%s&maxConcurrent=%d", d.hosts[i], d.auctionCommunicationMode, d.maxConcurrent)
+			_, err := http.Post(url, "application/json", bytes.NewReader(payload))
 			if err != nil {
 				fmt.Println("Failed to run auctions on index", i, err.Error())
 				return
@@ -55,6 +58,7 @@ func (d *externalAuctionDistributor) HoldStartAuctions(numAuctioneers int, start
 	}
 
 	wg.Wait()
+	workPool.Stop()
 
 	results := []auctiontypes.StartAuctionResult{}
 	for {
@@ -107,7 +111,9 @@ func (d *externalAuctionDistributor) HoldStopAuctions(numAuctioneers int, stopAu
 		go func(i int) {
 			defer wg.Done()
 			payload, _ := json.Marshal(groupedRequests[i])
-			res, err := http.Post("http://"+d.hosts[i]+"/stop-auctions?mode="+d.auctionCommunicationMode, "application/json", bytes.NewReader(payload))
+			url := fmt.Sprintf("http://%s/stop-auctions?mode=%s&maxConcurrent=%d", d.hosts[i], d.auctionCommunicationMode, d.maxConcurrent)
+
+			res, err := http.Post(url, "application/json", bytes.NewReader(payload))
 			if err != nil {
 				fmt.Println("Failed to run auctions on index", i, err.Error())
 				return

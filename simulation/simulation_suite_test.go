@@ -43,8 +43,8 @@ const DiegoNATSCommunicationMode = "diego-nats"
 const DiegoHTTPCommunicationMode = "diego-http"
 const ExternalAuctioneerMode = "external"
 
-const numAuctioneers = 100
-const numReps = 100
+const numAuctioneers = 200
+const numReps = 200
 const LatencyMin = 1 * time.Millisecond
 const LatencyMax = 2 * time.Millisecond
 
@@ -157,7 +157,7 @@ var _ = BeforeSuite(func() {
 	if auctioneerMode == InProcess {
 		auctionDistributor = auctiondistributor.NewInProcessAuctionDistributor(client, maxConcurrentPerExecutor)
 	} else if auctioneerMode == ExternalAuctioneerMode {
-		auctionDistributor = auctiondistributor.NewExternalAuctionDistributor(hosts, mode)
+		auctionDistributor = auctiondistributor.NewExternalAuctionDistributor(hosts, maxConcurrentPerExecutor, mode)
 	}
 })
 
@@ -296,7 +296,6 @@ func launchExternalNATSAuctioneers(natsAddrs string) []string {
 			"-natsAddrs", natsAddrs,
 			"-timeout", fmt.Sprintf("%s", timeout),
 			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
-			"-maxConcurrent", fmt.Sprintf("%d", maxConcurrentPerExecutor),
 		)
 		auctioneerHosts = append(auctioneerHosts, fmt.Sprintf("127.0.0.1:%d", port))
 
@@ -320,7 +319,6 @@ func launchExternalHTTPAuctioneers() []string {
 			auctioneerNodeBinary,
 			"-timeout", fmt.Sprintf("%s", timeout),
 			"-httpAddr", fmt.Sprintf("127.0.0.1:%d", port),
-			"-maxConcurrent", fmt.Sprintf("%d", maxConcurrentPerExecutor),
 		)
 		auctioneerHosts = append(auctioneerHosts, fmt.Sprintf("127.0.0.1:%d", port))
 

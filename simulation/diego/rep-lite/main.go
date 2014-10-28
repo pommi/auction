@@ -10,6 +10,7 @@ import (
 	"github.com/cloudfoundry-incubator/auction/communication/http/routes"
 	"github.com/cloudfoundry-incubator/auction/communication/nats/auction_nats_server"
 	"github.com/cloudfoundry/yagnats"
+	"github.com/pivotal-golang/lager"
 
 	"github.com/tedsuo/rata"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
 	"github.com/cloudfoundry-incubator/auction/communication/http/auction_http_handlers"
 	"github.com/cloudfoundry-incubator/auction/simulation/simulationrepdelegate"
-	"github.com/cloudfoundry-incubator/cf-lager"
 	"github.com/tedsuo/ifrit"
 	"github.com/tedsuo/ifrit/http_server"
 	"github.com/tedsuo/ifrit/sigmon"
@@ -45,7 +45,7 @@ func main() {
 
 	go serveOverNATS(rep)
 
-	handlers := auction_http_handlers.New(rep, cf_lager.New("rep-lite-http").Session(*repGuid))
+	handlers := auction_http_handlers.New(rep, lager.NewLogger("rep-lite-http"))
 	router, err := rata.NewRouter(routes.Routes, handlers)
 	if err != nil {
 		log.Fatalln("failed to make router:", err)
@@ -78,7 +78,7 @@ func serveOverNATS(rep *auctionrep.AuctionRep) {
 			log.Fatalln("no nats:", err)
 		}
 
-		natsRunner := auction_nats_server.New(client, rep, cf_lager.New("rep-lite-nats").Session(*repGuid))
+		natsRunner := auction_nats_server.New(client, rep, lager.NewLogger("rep-lite-nats"))
 		ifrit.Envoke(sigmon.New(natsRunner))
 	}
 }

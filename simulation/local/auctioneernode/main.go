@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +25,6 @@ import (
 var natsAddrs = flag.String("natsAddrs", "", "nats server addresses")
 var timeout = flag.Duration("timeout", time.Second, "timeout for nats responses")
 var httpAddr = flag.String("httpAddr", "", "http address to listen on")
-var maxConcurrent = flag.Int("maxConcurrent", 20, "max concurrent auctions")
 
 var errorResponse = []byte("error")
 
@@ -42,8 +42,6 @@ func main() {
 		Timeout: *timeout,
 	}, cf_lager.New("auctioneer-http"))
 
-	workers := workpool.NewWorkPool(*maxConcurrent)
-
 	getCommunicationMode := func(r *http.Request) auctiontypes.RepPoolClient {
 		var repClient auctiontypes.RepPoolClient
 		if r.URL.Query().Get("mode") == "NATS" {
@@ -58,7 +56,13 @@ func main() {
 	results := []auctiontypes.StartAuctionResult{}
 	done := false
 
+	t := time.Now()
 	http.HandleFunc("/start-auctions", func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		results = []auctiontypes.StartAuctionResult{}
+		done = false
+		lock.Unlock()
+
 		var auctionRequests []auctiontypes.StartAuctionRequest
 		err := json.NewDecoder(r.Body).Decode(&auctionRequests)
 		if err != nil {
@@ -66,25 +70,37 @@ func main() {
 			return
 		}
 
-		repClient := getCommunicationMode(r)
-
-		wg := &sync.WaitGroup{}
-		wg.Add(len(auctionRequests))
-		for _, auctionRequest := range auctionRequests {
-			auctionRequest := auctionRequest
-			workers.Submit(func() {
-				auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
-				lock.Lock()
-				results = append(results, auctionResult)
-				lock.Unlock()
-				wg.Done()
-			})
+		maxConcurrent, err := strconv.Atoi(r.URL.Query().Get("maxConcurrent"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 
-		wg.Wait()
-		lock.Lock()
-		done = true
-		lock.Unlock()
+		repClient := getCommunicationMode(r)
+
+		go func() {
+			workers := workpool.NewWorkPool(maxConcurrent)
+
+			wg := &sync.WaitGroup{}
+			wg.Add(len(auctionRequests))
+			for _, auctionRequest := range auctionRequests {
+				auctionRequest := auctionRequest
+				workers.Submit(func() {
+					auctionResult, _ := auctionrunner.New(repClient).RunLRPStartAuction(auctionRequest)
+					auctionResult.Duration = time.Since(t)
+					lock.Lock()
+					results = append(results, auctionResult)
+					lock.Unlock()
+					wg.Done()
+				})
+			}
+
+			wg.Wait()
+			lock.Lock()
+			done = true
+			lock.Unlock()
+			workers.Stop()
+		}()
 	})
 
 	http.HandleFunc("/start-auctions-results", func(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +126,14 @@ func main() {
 			return
 		}
 
+		maxConcurrent, err := strconv.Atoi(r.URL.Query().Get("maxConcurrent"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
 		repClient := getCommunicationMode(r)
+		workers := workpool.NewWorkPool(maxConcurrent)
 
 		lock := &sync.Mutex{}
 		wg := &sync.WaitGroup{}
@@ -129,6 +152,7 @@ func main() {
 		}
 
 		wg.Wait()
+		workers.Stop()
 	})
 
 	fmt.Println("auctioneering")

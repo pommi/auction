@@ -132,10 +132,10 @@ var _ = Describe("Auction", func() {
 		})
 
 		Context("Large Cold Starts", func() {
-			nexecutors := []int{25, 4 * 25}
-			n1apps := []int{1800, 4 * 1800}
-			n2apps := []int{200, 4 * 200}
-			n4apps := []int{50, 4 * 50}
+			nexecutors := []int{25, 8 * 25}
+			n1apps := []int{1800, 8 * 1800}
+			n2apps := []int{200, 8 * 200}
+			n4apps := []int{50, 8 * 50}
 			for i := range nexecutors {
 				i := i
 				Context("with single-instance and multi-instance apps", func() {
@@ -207,7 +207,7 @@ var _ = Describe("Auction", func() {
 			}
 		})
 
-		Context("Stop Auctions", func() {
+		XContext("Stop Auctions", func() {
 			processGuid := util.NewGrayscaleGuid("AAA")
 
 			Context("when there are duplicate instances on executors with disaparate resource availabilities", func() {

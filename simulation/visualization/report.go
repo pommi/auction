@@ -2,10 +2,12 @@ package visualization
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/GaryBoone/GoStats/stats"
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
+	"github.com/cloudfoundry/gunk/workpool"
 )
 
 type Report struct {
@@ -130,14 +132,26 @@ func (r *Report) WaitTimeStats() Stat {
 }
 
 func FetchAndSortInstances(client auctiontypes.SimulationRepPoolClient, repAddresses []auctiontypes.RepAddress) map[string][]auctiontypes.SimulatedInstance {
+	workPool := workpool.NewWorkPool(50)
+	wg := &sync.WaitGroup{}
+	wg.Add(len(repAddresses))
+	lock := &sync.Mutex{}
 	instancesByRepGuid := map[string][]auctiontypes.SimulatedInstance{}
 	for _, repAddress := range repAddresses {
-		instances := client.SimulatedInstances(repAddress)
-		sort.Sort(ByProcessGuid(instances))
-		instancesByRepGuid[repAddress.RepGuid] = instances
+		repAddress := repAddress
+		workPool.Submit(func() {
+			instances := client.SimulatedInstances(repAddress)
+			sort.Sort(ByProcessGuid(instances))
+			lock.Lock()
+			instancesByRepGuid[repAddress.RepGuid] = instances
+			lock.Unlock()
+			wg.Done()
+		})
 	}
-
+	wg.Wait()
+	workPool.Stop()
 	return instancesByRepGuid
+
 }
 
 type ByProcessGuid []auctiontypes.SimulatedInstance
