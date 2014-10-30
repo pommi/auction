@@ -158,7 +158,7 @@ func PrintReport(client auctiontypes.SimulationRepPoolClient, expectedAuctionCou
 	}
 
 	for _, result := range results {
-		if result.BiddingDuration > 20*time.Second {
+		if result.BiddingDuration > time.Hour { //turn this on to get detailed logs about auctions that took a long time.
 			fmt.Printf("Starting at %s, %s took %s:\n%s\n", result.AuctionStartTime.Sub(firstAuctionTime), result.LRPStartAuction.InstanceGuid, result.Duration, format.Object(result.Events, 1))
 		}
 	}

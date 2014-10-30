@@ -14,23 +14,23 @@ import (
 	"github.com/cloudfoundry-incubator/auction/auctiontypes"
 )
 
-const border = 5
-const instanceSize = 4
-const instanceSpacing = 1
-const instanceBoxHeight = instanceSize*200 + instanceSpacing*99
-const instanceBoxWidth = instanceSize*100 + instanceSpacing*99
+var border = 5
+var instanceSize = 4
+var instanceSpacing = 1
+var instanceBoxHeight = instanceSize*100 + instanceSpacing*99
+var instanceBoxWidth = instanceSize*100 + instanceSpacing*99
 
-const headerHeight = 80
+var headerHeight = 80
 
-const graphWidth = 300
-const graphTextX = 50
-const graphBinX = 55
-const binHeight = 14
-const binSpacing = 2
-const maxBinLength = graphWidth - graphBinX
+var graphWidth = 300
+var graphTextX = 50
+var graphBinX = 55
+var binHeight = 14
+var binSpacing = 2
+var maxBinLength = graphWidth - graphBinX
 
-const ReportCardWidth = border*3 + instanceBoxWidth + graphWidth
-const ReportCardHeight = border*3 + instanceBoxHeight
+var ReportCardWidth = border*3 + instanceBoxWidth + graphWidth
+var ReportCardHeight = border*3 + instanceBoxHeight
 
 type SVGReport struct {
 	SVG            *svg.SVG
@@ -42,7 +42,10 @@ type SVGReport struct {
 	height         int
 }
 
-func StartSVGReport(path string, width, height int) *SVGReport {
+func StartSVGReport(path string, width, height int, numCells int) *SVGReport {
+	instanceBoxHeight = instanceSize*numCells + instanceSpacing*(numCells-1)
+	ReportCardHeight = border*3 + instanceBoxHeight
+
 	f, err := os.Create(path)
 	Ω(err).ShouldNot(HaveOccurred())
 	s := svg.New(f)
