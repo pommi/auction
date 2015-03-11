@@ -74,40 +74,49 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 			logger.Info("fetched-zone-state", lager.Data{"cell-state-count": cellCount, "num-failed-requests": len(clients) - cellCount})
 
 			logger.Info("fetching-auctions")
-			lrpAuctions, taskAuctions := a.batch.DedupeAndDrain()
+			volAuctions, lrpAuctions, taskAuctions := a.batch.DedupeAndDrain()
 			logger.Info("fetched-auctions", lager.Data{
-				"lrp-start-auctions": len(lrpAuctions),
-				"task-auctions":      len(taskAuctions),
+				"lrp-start-auctions":    len(lrpAuctions),
+				"task-auctions":         len(taskAuctions),
+				"volume-start-auctions": len(volAuctions),
 			})
-			if len(lrpAuctions) == 0 && len(taskAuctions) == 0 {
+			if len(lrpAuctions) == 0 && len(taskAuctions) == 0 && len(volAuctions) == 0 {
 				logger.Info("nothing-to-auction")
 				break
 			}
 
 			logger.Info("scheduling")
+			//Breadcrumb
 			auctionRequest := auctiontypes.AuctionRequest{
-				LRPs:  lrpAuctions,
-				Tasks: taskAuctions,
+				Volumes: volAuctions,
+				LRPs:    lrpAuctions,
+				Tasks:   taskAuctions,
 			}
 
 			scheduler := NewScheduler(a.workPool, zones, a.clock)
 			auctionResults := scheduler.Schedule(auctionRequest)
 			logger.Info("scheduled", lager.Data{
-				"successful-lrp-start-auctions": len(auctionResults.SuccessfulLRPs),
-				"successful-task-auctions":      len(auctionResults.SuccessfulTasks),
-				"failed-lrp-start-auctions":     len(auctionResults.FailedLRPs),
-				"failed-task-auctions":          len(auctionResults.FailedTasks),
+				"successful-volume-start-auctions": len(auctionResults.SuccessfulVolumes),
+				"successful-lrp-start-auctions":    len(auctionResults.SuccessfulLRPs),
+				"successful-task-auctions":         len(auctionResults.SuccessfulTasks),
+				"failed-volume-start-auctions":     len(auctionResults.FailedVolumes),
+				"failed-lrp-start-auctions":        len(auctionResults.FailedLRPs),
+				"failed-task-auctions":             len(auctionResults.FailedTasks),
 			})
+			numVolumesFailed := len(auctionResults.FailedVolumes)
 			numStartsFailed := len(auctionResults.FailedLRPs)
 			numTasksFailed := len(auctionResults.FailedTasks)
 
 			logger.Info("resubmitted-failures", lager.Data{
-				"successful-lrp-start-auctions":     len(auctionResults.SuccessfulLRPs),
-				"successful-task-auctions":          len(auctionResults.SuccessfulTasks),
-				"will-not-retry-lrp-start-auctions": len(auctionResults.FailedLRPs),
-				"will-not-retry-task-auctions":      len(auctionResults.FailedTasks),
-				"will-retry-lrp-start-auctions":     numStartsFailed - len(auctionResults.FailedLRPs),
-				"will-retry-task-auctions":          numTasksFailed - len(auctionResults.FailedTasks),
+				"successful-volume-start-auctions":     len(auctionResults.SuccessfulVolumes),
+				"successful-lrp-start-auctions":        len(auctionResults.SuccessfulLRPs),
+				"successful-task-auctions":             len(auctionResults.SuccessfulTasks),
+				"will-not-retry-volume-start-auctions": len(auctionResults.FailedVolumes),
+				"will-not-retry-lrp-start-auctions":    len(auctionResults.FailedLRPs),
+				"will-not-retry-task-auctions":         len(auctionResults.FailedTasks),
+				"will-retry-volume-start-auctions":     numVolumesFailed - len(auctionResults.FailedVolumes),
+				"will-retry-lrp-start-auctions":        numStartsFailed - len(auctionResults.FailedLRPs),
+				"will-retry-task-auctions":             numTasksFailed - len(auctionResults.FailedTasks),
 			})
 
 			a.metricEmitter.AuctionCompleted(auctionResults)
@@ -116,6 +125,10 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 			return nil
 		}
 	}
+}
+
+func (a *auctionRunner) ScheduleVolumesForAuctions(volumeStarts []models.VolumeStartRequest) {
+	a.batch.AddVolumeStarts(volumeStarts)
 }
 
 func (a *auctionRunner) ScheduleLRPsForAuctions(lrpStarts []models.LRPStartRequest) {

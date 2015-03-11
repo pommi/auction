@@ -15,12 +15,15 @@ import (
 var ErrorCellMismatch = errors.New(diego_errors.CELL_MISMATCH_MESSAGE)
 var ErrorInsufficientResources = errors.New(diego_errors.INSUFFICIENT_RESOURCES_MESSAGE)
 var ErrorNothingToStop = errors.New("nothing to stop")
+var ErrVolumeNotAvailable = errors.New("volume not available")
+var ErrNoVolumeMount = errors.New("no volume mount")
 
 //go:generate counterfeiter -o fakes/fake_auction_runner.go . AuctionRunner
 type AuctionRunner interface {
 	ifrit.Runner
 	ScheduleLRPsForAuctions([]models.LRPStartRequest)
 	ScheduleTasksForAuctions([]models.Task)
+	ScheduleVolumesForAuctions([]models.VolumeStartRequest)
 }
 
 type AuctionRunnerDelegate interface {
@@ -34,15 +37,18 @@ type AuctionMetricEmitterDelegate interface {
 }
 
 type AuctionRequest struct {
-	LRPs  []LRPAuction
-	Tasks []TaskAuction
+	Volumes []VolumeAuction
+	LRPs    []LRPAuction
+	Tasks   []TaskAuction
 }
 
 type AuctionResults struct {
-	SuccessfulLRPs  []LRPAuction
-	SuccessfulTasks []TaskAuction
-	FailedLRPs      []LRPAuction
-	FailedTasks     []TaskAuction
+	SuccessfulVolumes []VolumeAuction
+	SuccessfulLRPs    []LRPAuction
+	SuccessfulTasks   []TaskAuction
+	FailedVolumes     []VolumeAuction
+	FailedLRPs        []LRPAuction
+	FailedTasks       []TaskAuction
 }
 
 // LRPStart and Task Auctions
@@ -97,15 +103,30 @@ type SimulationCellRep interface {
 	Reset() error
 }
 
+type VolumeAuction struct {
+	VolumeSetGuid    string
+	Stack            string
+	Index            int
+	SizeMB           int
+	ReservedMemoryMB int
+	AuctionRecord
+}
+
+func (v VolumeAuction) Identifier() string {
+	return fmt.Sprintf("%s.%d", v.VolumeSetGuid, v.Index)
+}
+
 type Work struct {
-	LRPs  []LRPAuction
-	Tasks []models.Task
+	Volumes []VolumeAuction
+	LRPs    []LRPAuction
+	Tasks   []models.Task
 }
 
 type CellState struct {
 	Stack              string
 	AvailableResources Resources
 	TotalResources     Resources
+	Volumes            []models.Volume
 	LRPs               []LRP
 	Tasks              []Task
 	Zone               string
@@ -130,7 +151,8 @@ type Task struct {
 }
 
 type Resources struct {
-	DiskMB     int
-	MemoryMB   int
-	Containers int
+	DiskMB           int
+	MemoryMB         int
+	Containers       int
+	PersistentDiskMB int
 }

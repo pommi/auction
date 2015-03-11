@@ -37,3 +37,22 @@ func sortZonesByInstances(zones map[string]Zone, lrpAuction auctiontypes.LRPAuct
 	sort.Sort(sorter)
 	return sorter.zones
 }
+
+func sortZonesByVolumes(zones map[string]Zone, volAuction auctiontypes.VolumeAuction) []lrpByZone {
+	sorter := zoneSorterByInstances{}
+
+	for _, zone := range zones {
+		instances := 0
+		for _, cell := range zone {
+			for _, vol := range cell.state.Volumes {
+				if vol.VolumeSetGuid == volAuction.VolumeSetGuid {
+					instances++
+				}
+			}
+		}
+		sorter.zones = append(sorter.zones, lrpByZone{zone, instances})
+	}
+
+	sort.Sort(sorter)
+	return sorter.zones
+}

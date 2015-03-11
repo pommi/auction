@@ -10,6 +10,7 @@ import (
 )
 
 type Batch struct {
+	volAuctions  []auctiontypes.VolumeAuction
 	lrpAuctions  []auctiontypes.LRPAuction
 	taskAuctions []auctiontypes.TaskAuction
 	lock         *sync.Mutex
@@ -19,11 +20,36 @@ type Batch struct {
 
 func NewBatch(clock clock.Clock) *Batch {
 	return &Batch{
+		volAuctions: []auctiontypes.VolumeAuction{},
 		lrpAuctions: []auctiontypes.LRPAuction{},
 		lock:        &sync.Mutex{},
 		clock:       clock,
 		HasWork:     make(chan struct{}, 1),
 	}
+}
+
+func (b *Batch) AddVolumeStarts(starts []models.VolumeStartRequest) {
+	auctions := []auctiontypes.VolumeAuction{}
+	now := b.clock.Now()
+	for _, start := range starts {
+		for _, i := range start.Indices {
+			vs := start.VolumeSet
+			auctions = append(auctions, auctiontypes.VolumeAuction{
+				VolumeSetGuid:    vs.VolumeSetGuid,
+				Stack:            vs.Stack,
+				SizeMB:           vs.SizeMB,
+				ReservedMemoryMB: vs.ReservedMemoryMB,
+				Index:            int(i),
+				AuctionRecord: auctiontypes.AuctionRecord{
+					QueueTime: now,
+				}})
+		}
+	}
+
+	b.lock.Lock()
+	b.volAuctions = append(b.volAuctions, auctions...)
+	b.claimToHaveWork()
+	b.lock.Unlock()
 }
 
 func (b *Batch) AddLRPStarts(starts []models.LRPStartRequest) {
@@ -64,10 +90,12 @@ func (b *Batch) AddTasks(tasks []models.Task) {
 	b.lock.Unlock()
 }
 
-func (b *Batch) DedupeAndDrain() ([]auctiontypes.LRPAuction, []auctiontypes.TaskAuction) {
+func (b *Batch) DedupeAndDrain() ([]auctiontypes.VolumeAuction, []auctiontypes.LRPAuction, []auctiontypes.TaskAuction) {
 	b.lock.Lock()
+	volAuctions := b.volAuctions
 	lrpAuctions := b.lrpAuctions
 	taskAuctions := b.taskAuctions
+	b.volAuctions = []auctiontypes.VolumeAuction{}
 	b.lrpAuctions = []auctiontypes.LRPAuction{}
 	b.taskAuctions = []auctiontypes.TaskAuction{}
 	select {
@@ -75,6 +103,17 @@ func (b *Batch) DedupeAndDrain() ([]auctiontypes.LRPAuction, []auctiontypes.Task
 	default:
 	}
 	b.lock.Unlock()
+
+	dedupedVolAuctions := []auctiontypes.VolumeAuction{}
+	presentVolAuctions := map[string]bool{}
+	for _, startAuction := range volAuctions {
+		id := startAuction.Identifier()
+		if presentVolAuctions[id] {
+			continue
+		}
+		presentVolAuctions[id] = true
+		dedupedVolAuctions = append(dedupedVolAuctions, startAuction)
+	}
 
 	dedupedLRPAuctions := []auctiontypes.LRPAuction{}
 	presentLRPAuctions := map[string]bool{}
@@ -98,7 +137,7 @@ func (b *Batch) DedupeAndDrain() ([]auctiontypes.LRPAuction, []auctiontypes.Task
 		dedupedTaskAuctions = append(dedupedTaskAuctions, taskAuction)
 	}
 
-	return dedupedLRPAuctions, dedupedTaskAuctions
+	return dedupedVolAuctions, dedupedLRPAuctions, dedupedTaskAuctions
 }
 
 func (b *Batch) claimToHaveWork() {

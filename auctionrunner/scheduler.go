@@ -67,11 +67,27 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 
 	var successfulLRPs = map[string]auctiontypes.LRPAuction{}
 	var lrpStartAuctionLookup = map[string]auctiontypes.LRPAuction{}
+
 	var successfulTasks = map[string]auctiontypes.TaskAuction{}
 	var taskAuctionLookup = map[string]auctiontypes.TaskAuction{}
 
+	var successfulVolumes = map[string]auctiontypes.VolumeAuction{}
+	var volAuctionLookup = map[string]auctiontypes.VolumeAuction{}
+
+	sort.Sort(SortableVolumeAuctions(auctionRequest.Volumes))
 	sort.Sort(SortableLRPAuctions(auctionRequest.LRPs))
 	sort.Sort(SortableTaskAuctions(auctionRequest.Tasks))
+
+	for _, volAuction := range auctionRequest.Volumes {
+		volAuctionLookup[volAuction.Identifier()] = volAuction
+		successfulVolume, err := s.scheduleVolumeAuction(volAuction)
+		if err != nil {
+			volAuction.PlacementError = err.Error()
+			results.FailedVolumes = append(results.FailedVolumes, volAuction)
+		} else {
+			successfulVolumes[successfulVolume.Identifier()] = successfulVolume
+		}
+	}
 
 	lrpsBeforeTasks, lrpsAfterTasks := splitLRPS(auctionRequest.LRPs)
 
@@ -105,6 +121,11 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 
 	failedWorks := s.commitCells()
 	for _, failedWork := range failedWorks {
+		for _, failedStart := range failedWork.Volumes {
+			identifier := failedStart.Identifier()
+			delete(successfulVolumes, identifier)
+			results.FailedVolumes = append(results.FailedVolumes, volAuctionLookup[identifier])
+		}
 		for _, failedStart := range failedWork.LRPs {
 			identifier := failedStart.Identifier()
 			delete(successfulLRPs, identifier)
@@ -118,6 +139,9 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 		}
 	}
 
+	for i := range successfulVolumes {
+		results.SuccessfulVolumes = append(results.SuccessfulVolumes, successfulVolumes[i])
+	}
 	for _, successfulStart := range successfulLRPs {
 		results.SuccessfulLRPs = append(results.SuccessfulLRPs, successfulStart)
 	}
@@ -130,12 +154,18 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 
 func (s *Scheduler) markResults(results auctiontypes.AuctionResults) auctiontypes.AuctionResults {
 	now := s.clock.Now()
+	for i := range results.FailedVolumes {
+		results.FailedVolumes[i].Attempts++
+	}
 	for i := range results.FailedLRPs {
-
 		results.FailedLRPs[i].Attempts++
 	}
 	for i := range results.FailedTasks {
 		results.FailedTasks[i].Attempts++
+	}
+	for i := range results.SuccessfulVolumes {
+		results.SuccessfulVolumes[i].Attempts++
+		results.SuccessfulVolumes[i].WaitDuration = now.Sub(results.SuccessfulVolumes[i].QueueTime)
 	}
 	for i := range results.SuccessfulLRPs {
 		results.SuccessfulLRPs[i].Attempts++
@@ -186,6 +216,53 @@ func (s *Scheduler) commitCells() []auctiontypes.Work {
 
 	wg.Wait()
 	return failedWorks
+}
+
+func (s *Scheduler) scheduleVolumeAuction(volAuction auctiontypes.VolumeAuction) (auctiontypes.VolumeAuction, error) {
+	var winnerCell *Cell
+	winnerScore := 1e20
+
+	sortedZones := sortZonesByVolumes(s.zones, volAuction)
+
+	for zoneIndex, volByZone := range sortedZones {
+		cells := volByZone.zone.FilterCells(volAuction.Stack)
+		if len(cells) == 0 {
+			return auctiontypes.VolumeAuction{}, auctiontypes.ErrorCellMismatch
+		}
+
+		for _, cell := range cells {
+			score, err := cell.ScoreForVolumeAuction(volAuction)
+			if err != nil {
+				continue
+			}
+
+			if score < winnerScore {
+				winnerScore = score
+				winnerCell = cell
+			}
+		}
+
+		if zoneIndex+1 < len(sortedZones) &&
+			volByZone.instances == sortedZones[zoneIndex+1].instances {
+			continue
+		}
+
+		if winnerCell != nil {
+			break
+		}
+	}
+
+	if winnerCell == nil {
+		return auctiontypes.VolumeAuction{}, auctiontypes.ErrorInsufficientResources
+	}
+
+	err := winnerCell.ReserveVolume(volAuction)
+	if err != nil {
+		return auctiontypes.VolumeAuction{}, err
+	}
+
+	volAuction.Winner = winnerCell.Guid
+	return volAuction, nil
 }
 
 func (s *Scheduler) scheduleLRPAuction(lrpAuction auctiontypes.LRPAuction) (auctiontypes.LRPAuction, error) {
