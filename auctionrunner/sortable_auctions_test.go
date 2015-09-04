@@ -29,10 +29,10 @@ var _ = Describe("Sortable Auctions", func() {
 			})
 
 			It("sorts boulders before pebbles", func() {
-				Expect(lrps[0].DesiredLRP.ProcessGuid).To((Equal("pg-9")))
-				Expect(lrps[1].DesiredLRP.ProcessGuid).To((Equal("pg-8")))
-				Expect(lrps[2].DesiredLRP.ProcessGuid).To((Equal("pg-7")))
-				Expect(lrps[3].DesiredLRP.ProcessGuid).To((Equal("pg-6")))
+				Expect(lrps[0].ProcessGuid).To((Equal("pg-9")))
+				Expect(lrps[1].ProcessGuid).To((Equal("pg-8")))
+				Expect(lrps[2].ProcessGuid).To((Equal("pg-7")))
+				Expect(lrps[3].ProcessGuid).To((Equal("pg-6")))
 			})
 		})
 
