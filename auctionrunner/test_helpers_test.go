@@ -71,12 +71,13 @@ func BuildCellState(
 	zone string,
 	memoryMB int32,
 	diskMB int32,
-	containers int,
+	containerCount int,
 	evacuating bool,
 	rootFSProviders rep.RootFSProviders,
+	containers rep.Containers,
 	lrps []rep.LRP,
 ) rep.CellState {
-	totalResources := rep.NewResources(memoryMB, diskMB, containers)
+	totalResources := rep.NewResources(memoryMB, diskMB, containerCount)
 
 	availableResources := totalResources.Copy()
 	for i := range lrps {
@@ -87,5 +88,5 @@ func BuildCellState(
 	Expect(availableResources.DiskMB).To(BeNumerically(">=", 0), "Check your math!")
 	Expect(availableResources.Containers).To(BeNumerically(">=", 0), "Check your math!")
 
-	return rep.NewCellState(rootFSProviders, availableResources, totalResources, lrps, nil, zone, evacuating)
+	return rep.NewCellState(rootFSProviders, availableResources, totalResources, containers, lrps, nil, zone, evacuating)
 }

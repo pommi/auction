@@ -59,6 +59,22 @@ func NewAuctionRecord(now time.Time) AuctionRecord {
 	return AuctionRecord{QueueTime: now}
 }
 
+type ContainerAuction struct {
+	rep.Container
+	AuctionRecord
+}
+
+func NewContainerAuction(container rep.Container, now time.Time) ContainerAuction {
+	return ContainerAuction{
+		container,
+		NewAuctionRecord(now),
+	}
+}
+
+func (a *ContainerAuction) Copy() ContainerAuction {
+	return ContainerAuction{a.Container.Copy(), a.AuctionRecord}
+}
+
 type LRPAuction struct {
 	rep.LRP
 	AuctionRecord

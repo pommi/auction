@@ -80,7 +80,7 @@ var _ = Describe("Scheduler", func() {
 				auctionrunner.NewCell(
 					"A-cell",
 					clients["A-cell"],
-					BuildCellState("A-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, []rep.LRP{
+					BuildCellState("A-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 						*BuildLRP("pg-1", "domain", 0, "", 10, 10),
 						*BuildLRP("pg-2", "domain", 0, "", 10, 10),
 					}),
@@ -92,7 +92,7 @@ var _ = Describe("Scheduler", func() {
 				auctionrunner.NewCell(
 					"B-cell",
 					clients["B-cell"],
-					BuildCellState("B-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, []rep.LRP{
+					BuildCellState("B-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 						*BuildLRP("pg-3", "domain", 0, "", 10, 10),
 					}),
 				),
@@ -106,7 +106,7 @@ var _ = Describe("Scheduler", func() {
 					auctionrunner.NewCell(
 						"C-cell",
 						clients["C-cell"],
-						BuildCellState("C-zone", 100, 100, 100, false, windowsOnlyRootFSProviders, []rep.LRP{
+						BuildCellState("C-zone", 100, 100, 100, false, windowsOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 							*BuildLRP("pg-win-1", "domain", 0, "", 10, 10),
 						}),
 					),
@@ -251,13 +251,13 @@ var _ = Describe("Scheduler", func() {
 
 		BeforeEach(func() {
 			clients["A-cell"] = &repfakes.FakeSimClient{}
-			zones["A-zone"] = auctionrunner.Zone{auctionrunner.NewCell("A-cell", clients["A-cell"], BuildCellState("A-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, []rep.LRP{
+			zones["A-zone"] = auctionrunner.Zone{auctionrunner.NewCell("A-cell", clients["A-cell"], BuildCellState("A-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 				*BuildLRP("does-not-matter", "domain", 0, "", 10, 10),
 				*BuildLRP("does-not-matter", "domain", 0, "", 10, 10),
 			}))}
 
 			clients["B-cell"] = &repfakes.FakeSimClient{}
-			zones["B-zone"] = auctionrunner.Zone{auctionrunner.NewCell("B-cell", clients["B-cell"], BuildCellState("B-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, []rep.LRP{
+			zones["B-zone"] = auctionrunner.Zone{auctionrunner.NewCell("B-cell", clients["B-cell"], BuildCellState("B-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 				*BuildLRP("does-not-matter", "domain", 0, "", 10, 10),
 			}))}
 
@@ -272,7 +272,7 @@ var _ = Describe("Scheduler", func() {
 					auctionrunner.NewCell(
 						"C-cell",
 						clients["C-cell"],
-						BuildCellState("C-zone", 100, 100, 100, false, windowsOnlyRootFSProviders, []rep.LRP{
+						BuildCellState("C-zone", 100, 100, 100, false, windowsOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 							*BuildLRP("tg-win-1", "domain", 0, "", 10, 10),
 						}),
 					),
@@ -406,13 +406,13 @@ var _ = Describe("Scheduler", func() {
 	Describe("a comprehensive scenario", func() {
 		BeforeEach(func() {
 			clients["A-cell"] = &repfakes.FakeSimClient{}
-			zones["A-zone"] = auctionrunner.Zone{auctionrunner.NewCell("A-cell", clients["A-cell"], BuildCellState("A-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, []rep.LRP{
+			zones["A-zone"] = auctionrunner.Zone{auctionrunner.NewCell("A-cell", clients["A-cell"], BuildCellState("A-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 				*BuildLRP("pg-1", "domain", 0, "", 10, 10),
 				*BuildLRP("pg-2", "domain", 0, "", 10, 10),
 			}))}
 
 			clients["B-cell"] = &repfakes.FakeSimClient{}
-			zones["B-zone"] = auctionrunner.Zone{auctionrunner.NewCell("B-cell", clients["B-cell"], BuildCellState("B-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, []rep.LRP{
+			zones["B-zone"] = auctionrunner.Zone{auctionrunner.NewCell("B-cell", clients["B-cell"], BuildCellState("B-zone", 100, 100, 100, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{
 				*BuildLRP("pg-3", "domain", 0, "", 10, 10),
 				*BuildLRP("pg-4", "domain", 0, "", 20, 20),
 			}))}
@@ -521,7 +521,7 @@ var _ = Describe("Scheduler", func() {
 
 		JustBeforeEach(func() {
 			zones["zone"] = auctionrunner.Zone{
-				auctionrunner.NewCell("cell", clients["cell"], BuildCellState("zone", memory, 1000, 1000, false, linuxOnlyRootFSProviders, []rep.LRP{})),
+				auctionrunner.NewCell("cell", clients["cell"], BuildCellState("zone", memory, 1000, 1000, false, linuxOnlyRootFSProviders, rep.NewContainers(), []rep.LRP{})),
 			}
 
 			auctionRequest := auctiontypes.AuctionRequest{
