@@ -32,15 +32,18 @@ type AuctionMetricEmitterDelegate interface {
 }
 
 type AuctionRequest struct {
-	LRPs  []LRPAuction
-	Tasks []TaskAuction
+	LRPs              []LRPAuction
+	Tasks             []TaskAuction
+	ContainerAuctions ContainerAuctions
 }
 
 type AuctionResults struct {
-	SuccessfulLRPs  []LRPAuction
-	SuccessfulTasks []TaskAuction
-	FailedLRPs      []LRPAuction
-	FailedTasks     []TaskAuction
+	SuccessfulContainerAuctions ContainerAuctions
+	SuccessfulLRPs              []LRPAuction
+	SuccessfulTasks             []TaskAuction
+	FailedContainerAuctions     ContainerAuctions
+	FailedLRPs                  []LRPAuction
+	FailedTasks                 []TaskAuction
 }
 
 // LRPStart and Task Auctions
@@ -57,6 +60,12 @@ type AuctionRecord struct {
 
 func NewAuctionRecord(now time.Time) AuctionRecord {
 	return AuctionRecord{QueueTime: now}
+}
+
+type ContainerAuctions []ContainerAuction
+
+func NewContainerAuctions(auctions ...ContainerAuction) ContainerAuctions {
+	return ContainerAuctions(auctions)
 }
 
 type ContainerAuction struct {

@@ -12,11 +12,12 @@ import (
 )
 
 type Batch struct {
-	lrpAuctions  []auctiontypes.LRPAuction
-	taskAuctions []auctiontypes.TaskAuction
-	lock         *sync.Mutex
-	HasWork      chan struct{}
-	clock        clock.Clock
+	containerAuctions auctiontypes.ContainerAuctions
+	lrpAuctions       []auctiontypes.LRPAuction
+	taskAuctions      []auctiontypes.TaskAuction
+	lock              *sync.Mutex
+	HasWork           chan struct{}
+	clock             clock.Clock
 }
 
 func NewBatch(clock clock.Clock) *Batch {
@@ -26,6 +27,24 @@ func NewBatch(clock clock.Clock) *Batch {
 		clock:       clock,
 		HasWork:     make(chan struct{}, 1),
 	}
+}
+
+func (b *Batch) AddContainerStarts(starts []auctioneer.ContainerStartRequest) {
+	auctions := make([]auctiontypes.ContainerAuction, 0, len(starts))
+	now := b.clock.Now()
+	for i := range starts {
+		start := &starts[i]
+		for _, index := range start.Indices {
+			containerKey := rep.NewContainerKey(start.ProcessGuid, start.Domain, int32(index))
+			auction := auctiontypes.NewContainerAuction(rep.NewContainer(containerKey, start.Resource), now)
+			auctions = append(auctions, auction)
+		}
+	}
+
+	b.lock.Lock()
+	b.containerAuctions = append(b.containerAuctions, auctions...)
+	b.claimToHaveWork()
+	b.lock.Unlock()
 }
 
 func (b *Batch) AddLRPStarts(starts []auctioneer.LRPStartRequest) {
@@ -59,8 +78,9 @@ func (b *Batch) AddTasks(tasks []auctioneer.TaskStartRequest) {
 	b.lock.Unlock()
 }
 
-func (b *Batch) DedupeAndDrain() ([]auctiontypes.LRPAuction, []auctiontypes.TaskAuction) {
+func (b *Batch) DedupeAndDrain() (auctiontypes.ContainerAuctions, []auctiontypes.LRPAuction, []auctiontypes.TaskAuction) {
 	b.lock.Lock()
+	containerAuctions := b.containerAuctions
 	lrpAuctions := b.lrpAuctions
 	taskAuctions := b.taskAuctions
 	b.lrpAuctions = []auctiontypes.LRPAuction{}
@@ -70,6 +90,17 @@ func (b *Batch) DedupeAndDrain() ([]auctiontypes.LRPAuction, []auctiontypes.Task
 	default:
 	}
 	b.lock.Unlock()
+
+	dedupedContainerAuctions := auctiontypes.NewContainerAuctions()
+	presentContainerAuctions := map[string]bool{}
+	for _, startAuction := range containerAuctions {
+		id := startAuction.Identifier()
+		if presentContainerAuctions[id] {
+			continue
+		}
+		presentContainerAuctions[id] = true
+		dedupedContainerAuctions = append(dedupedContainerAuctions, startAuction)
+	}
 
 	dedupedLRPAuctions := []auctiontypes.LRPAuction{}
 	presentLRPAuctions := map[string]bool{}
@@ -93,7 +124,7 @@ func (b *Batch) DedupeAndDrain() ([]auctiontypes.LRPAuction, []auctiontypes.Task
 		dedupedTaskAuctions = append(dedupedTaskAuctions, taskAuction)
 	}
 
-	return dedupedLRPAuctions, dedupedTaskAuctions
+	return dedupedContainerAuctions, dedupedLRPAuctions, dedupedTaskAuctions
 }
 
 func (b *Batch) claimToHaveWork() {

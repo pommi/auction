@@ -79,7 +79,7 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 			})
 
 			logger.Info("fetching-auctions")
-			lrpAuctions, taskAuctions := a.batch.DedupeAndDrain()
+			containerAuctions, lrpAuctions, taskAuctions := a.batch.DedupeAndDrain()
 			logger.Info("fetched-auctions", lager.Data{
 				"lrp-start-auctions": len(lrpAuctions),
 				"task-auctions":      len(taskAuctions),
@@ -91,8 +91,9 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 
 			logger.Info("scheduling")
 			auctionRequest := auctiontypes.AuctionRequest{
-				LRPs:  lrpAuctions,
-				Tasks: taskAuctions,
+				ContainerAuctions: containerAuctions,
+				LRPs:              lrpAuctions,
+				Tasks:             taskAuctions,
 			}
 
 			scheduler := NewScheduler(a.workPool, zones, a.clock)

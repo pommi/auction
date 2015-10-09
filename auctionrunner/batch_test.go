@@ -25,7 +25,8 @@ var _ = Describe("Batch", func() {
 
 	It("should start off empty", func() {
 		Expect(batch.HasWork).NotTo(Receive())
-		starts, tasks := batch.DedupeAndDrain()
+		containers, starts, tasks := batch.DedupeAndDrain()
+		Expect(containers).To(BeEmpty())
 		Expect(starts).To(BeEmpty())
 		Expect(tasks).To(BeEmpty())
 	})
@@ -38,7 +39,7 @@ var _ = Describe("Batch", func() {
 			})
 
 			It("makes the start auction available when drained", func() {
-				lrpAuctions, _ := batch.DedupeAndDrain()
+				_, lrpAuctions, _ := batch.DedupeAndDrain()
 				Expect(lrpAuctions).To(ConsistOf(BuildLRPAuctions(lrpStart, clock.Now())))
 			})
 
@@ -54,7 +55,7 @@ var _ = Describe("Batch", func() {
 			})
 
 			It("makes the stop auction available when drained", func() {
-				_, taskAuctions := batch.DedupeAndDrain()
+				_, _, taskAuctions := batch.DedupeAndDrain()
 				Expect(taskAuctions).To(ConsistOf(BuildTaskAuction(&task.Task, clock.Now())))
 			})
 
@@ -79,7 +80,7 @@ var _ = Describe("Batch", func() {
 		})
 
 		It("should dedupe any duplicate start auctions and stop auctions", func() {
-			lrpAuctions, taskAuctions := batch.DedupeAndDrain()
+			_, lrpAuctions, taskAuctions := batch.DedupeAndDrain()
 			Expect(lrpAuctions).To(Equal([]auctiontypes.LRPAuction{
 				BuildLRPAuction("pg-1", "domain", 1, "linux", 10, 10, clock.Now()),
 				BuildLRPAuction("pg-2", "domain", 2, "linux", 10, 10, clock.Now()),
@@ -99,7 +100,7 @@ var _ = Describe("Batch", func() {
 
 		It("should clear out its cache, so a subsequent call shouldn't fetch anything", func() {
 			batch.DedupeAndDrain()
-			lrpAuctions, taskAuctions := batch.DedupeAndDrain()
+			_, lrpAuctions, taskAuctions := batch.DedupeAndDrain()
 			Expect(lrpAuctions).To(BeEmpty())
 			Expect(taskAuctions).To(BeEmpty())
 		})
