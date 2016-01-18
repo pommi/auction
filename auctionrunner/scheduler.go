@@ -31,6 +31,7 @@ type Scheduler struct {
 	zones    map[string]Zone
 	clock    clock.Clock
 	logger   lager.Logger
+	weight   float64
 }
 
 func NewScheduler(
@@ -38,12 +39,14 @@ func NewScheduler(
 	zones map[string]Zone,
 	clock clock.Clock,
 	logger lager.Logger,
+	weight float64,
 ) *Scheduler {
 	return &Scheduler{
 		workPool: workPool,
 		zones:    zones,
 		clock:    clock,
 		logger:   logger,
+		weight:   weight,
 	}
 }
 
@@ -216,8 +219,11 @@ func (s *Scheduler) scheduleLRPAuction(lrpAuction *auctiontypes.LRPAuction) (*au
 
 	for zoneIndex, lrpByZone := range sortedZones {
 		for _, cell := range lrpByZone.zone {
-			score, err := cell.ScoreForLRP(&lrpAuction.LRP)
+			score, err := cell.ScoreForLRP(&lrpAuction.LRP, s.weight)
+			s.logger.Debug("score-for-cell-and-lrp", lager.Data{"cell-guid": cell.Guid, "lrp-guid": lrpAuction.Identifier(), "score": score})
+
 			if err != nil {
+				s.logger.Error("failed-to-score-cell", err, lager.Data{"cell-guid": winnerCell.Guid, "lrp-guid": lrpAuction.Identifier()})
 				continue
 			}
 

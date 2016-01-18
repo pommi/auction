@@ -19,6 +19,7 @@ type auctionRunner struct {
 	clock         clock.Clock
 	workPool      *workpool.WorkPool
 	logger        lager.Logger
+	weight        float64
 }
 
 func New(
@@ -27,6 +28,7 @@ func New(
 	clock clock.Clock,
 	workPool *workpool.WorkPool,
 	logger lager.Logger,
+	weight float64,
 ) *auctionRunner {
 	return &auctionRunner{
 		delegate:      delegate,
@@ -35,6 +37,7 @@ func New(
 		clock:         clock,
 		workPool:      workPool,
 		logger:        logger,
+		weight:        weight,
 	}
 }
 
@@ -99,7 +102,7 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 				Tasks: taskAuctions,
 			}
 
-			scheduler := NewScheduler(a.workPool, zones, a.clock, logger)
+			scheduler := NewScheduler(a.workPool, zones, a.clock, logger, a.weight)
 			auctionResults := scheduler.Schedule(auctionRequest)
 			logger.Info("scheduled", lager.Data{
 				"successful-lrp-start-auctions": len(auctionResults.SuccessfulLRPs),
