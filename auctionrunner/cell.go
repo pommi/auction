@@ -27,7 +27,7 @@ func (c *Cell) MatchRootFS(rootFS string) bool {
 	return c.state.MatchRootFS(rootFS)
 }
 
-func (c *Cell) ScoreForLRP(lrp *rep.LRP) (float64, error) {
+func (c *Cell) ScoreForLRP(lrp *rep.LRP, startingContainerWeight float64) (float64, error) {
 	err := c.state.ResourceMatch(&lrp.Resource)
 	if err != nil {
 		return 0, err
@@ -40,17 +40,17 @@ func (c *Cell) ScoreForLRP(lrp *rep.LRP) (float64, error) {
 		}
 	}
 
-	resourceScore := c.state.ComputeScore(&lrp.Resource) + numberOfInstancesWithMatchingProcessGuid
+	resourceScore := c.state.ComputeScore(&lrp.Resource, startingContainerWeight) + numberOfInstancesWithMatchingProcessGuid
 	return resourceScore, nil
 }
 
-func (c *Cell) ScoreForTask(task *rep.Task) (float64, error) {
+func (c *Cell) ScoreForTask(task *rep.Task, startingContainerWeight float64) (float64, error) {
 	err := c.state.ResourceMatch(&task.Resource)
 	if err != nil {
 		return 0, err
 	}
 
-	return c.state.ComputeScore(&task.Resource) + float64(len(c.state.Tasks)), nil
+	return c.state.ComputeScore(&task.Resource, startingContainerWeight) + float64(len(c.state.Tasks)), nil
 }
 
 func (c *Cell) ReserveLRP(lrp *rep.LRP) error {
