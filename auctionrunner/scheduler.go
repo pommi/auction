@@ -237,7 +237,7 @@ func (s *Scheduler) scheduleLRPAuction(lrpAuction *auctiontypes.LRPAuction) (*au
 			score, err := cell.ScoreForLRP(&lrpAuction.LRP, s.startingContainerWeight)
 			if err != nil {
 				removeNonApplicableProblems(problems, err)
-				s.logger.Info("schedule-lrp-auction-after-error", lager.Data{"problems": problems, "error": err})
+				s.logger.Debug("schedule-lrp-auction-after-error", lager.Data{"problems": problems, "error": err})
 				continue
 			}
 
