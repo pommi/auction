@@ -48,6 +48,7 @@ type AuctionRunner interface {
 	ifrit.Runner
 	ScheduleLRPsForAuctions([]auctioneer.LRPStartRequest)
 	ScheduleTasksForAuctions([]auctioneer.TaskStartRequest)
+	Identifier() string
 }
 
 type AuctionRunnerDelegate interface {

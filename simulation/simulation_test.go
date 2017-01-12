@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"code.cloudfoundry.org/auction/auctiontypes"
 	"code.cloudfoundry.org/auction/simulation/util"
 	"code.cloudfoundry.org/auction/simulation/visualization"
 	"code.cloudfoundry.org/auctioneer"
@@ -71,6 +72,11 @@ var _ = Describe("Auction", func() {
 		Eventually(runnerDelegate.ResultSize, time.Minute, 100*time.Millisecond).Should(Equal(len(lrpStartAuctions)))
 	}
 
+	runStartAuctionWithRunner := func(runner auctiontypes.AuctionRunner, lrpStartAuctions []auctioneer.LRPStartRequest, numCells int) {
+		runnerDelegate.SetCellLimit(numCells)
+		runner.ScheduleLRPsForAuctions(lrpStartAuctions)
+	}
+
 	runAndReportStartAuction := func(lrpStartAuctions []auctioneer.LRPStartRequest, numCells int, i int, j int) *visualization.Report {
 		t := time.Now()
 		runStartAuction(lrpStartAuctions, numCells)
@@ -80,6 +86,47 @@ var _ = Describe("Auction", func() {
 
 		cells, _ := runnerDelegate.FetchCellReps()
 		report := visualization.NewReport(len(lrpStartAuctions), cells, runnerDelegate.Results(), duration)
+
+		visualization.PrintReport(report)
+		svgReport.DrawReportCard(i, j, report)
+		reports = append(reports, report)
+		fmt.Println("Done...")
+		return report
+	}
+
+	runAndReportStartWithNoLocktioneer := func(runnerInstanceMap map[auctiontypes.AuctionRunner][]auctioneer.LRPStartRequest, numCells, i, j, winners, losers int) *visualization.Report {
+		t := time.Now()
+
+		for i := 0; i < 2; i++ {
+			for runner, instance := range runnerInstanceMap {
+				runStartAuctionWithRunner(runner, instance, numCells)
+			}
+		}
+		successCounter := func() int {
+			results := runnerDelegate.Results()
+			winners := []string{}
+			for _, result := range results.SuccessfulLRPs {
+				winners = append(winners, fmt.Sprintf("%s-%d", result.ProcessGuid, result.Index))
+			}
+			return len(winners)
+		}
+
+		failCounter := func() int {
+			results := runnerDelegate.Results()
+			losers := []string{}
+			for _, result := range results.FailedLRPs {
+				losers = append(losers, fmt.Sprintf("%s-%d", result.ProcessGuid, result.Index))
+			}
+			return len(losers)
+		}
+
+		Eventually(failCounter, 15*time.Second).Should(Equal(losers))
+		Eventually(successCounter, 15*time.Second).Should(Equal(winners))
+		// Eventually(runnerDelegate.ResultSize(), 15*time.Second, 1*time.Second).Should(Equal(expectedAuctions))
+		duration := time.Since(t)
+
+		cells, _ := runnerDelegate.FetchCellReps()
+		report := visualization.NewReport(len(runnerInstanceMap[runner]), cells, runnerDelegate.Results(), duration)
 
 		visualization.PrintReport(report)
 		svgReport.DrawReportCard(i, j, report)
@@ -108,6 +155,27 @@ var _ = Describe("Auction", func() {
 	})
 
 	Describe("Experiments", func() {
+
+		Context("Nolocktioneers", func() {
+			var runnerInstanceMap map[auctiontypes.AuctionRunner][]auctioneer.LRPStartRequest
+			BeforeEach(func() {
+				runnerInstanceMap = make(map[auctiontypes.AuctionRunner][]auctioneer.LRPStartRequest)
+			})
+			It("should not collide", func() {
+				runnerInstanceMap[runner] = generateUniqueLRPStartAuctions(1, 60)
+				runnerInstanceMap[runner2] = generateUniqueLRPStartAuctions(1, 60)
+				runAndReportStartWithNoLocktioneer(runnerInstanceMap, numCells, 1, 0, 2, 1)
+			})
+
+			Context("when multiple auctioneers can take more than one task", func() {
+				FIt("should collide", func() {
+					runnerInstanceMap[runner] = generateUniqueLRPStartAuctions(1, 60)
+					runnerInstanceMap[runner2] = generateUniqueLRPStartAuctions(2, 60)
+					runAndReportStartWithNoLocktioneer(runnerInstanceMap, numCells, 1, 0, 3, 0)
+				})
+			})
+		})
+
 		Context("Small Cold LRPStarts", func() {
 			napps := []int{8, 40, 200, 800}
 			ncells := []int{4, 10, 20, 40}

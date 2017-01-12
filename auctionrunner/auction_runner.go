@@ -21,6 +21,7 @@ type auctionRunner struct {
 	clock                   clock.Clock
 	workPool                *workpool.WorkPool
 	startingContainerWeight float64
+	identifier              string
 }
 
 func New(
@@ -30,6 +31,7 @@ func New(
 	clock clock.Clock,
 	workPool *workpool.WorkPool,
 	startingContainerWeight float64,
+	identifier string,
 ) *auctionRunner {
 	return &auctionRunner{
 		logger: logger,
@@ -40,6 +42,7 @@ func New(
 		clock:                   clock,
 		workPool:                workPool,
 		startingContainerWeight: startingContainerWeight,
+		identifier:              identifier,
 	}
 }
 
@@ -52,7 +55,7 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 	for {
 		select {
 		case <-hasWork:
-			logger := a.logger.Session("auction")
+			logger := a.logger.Session("auction", lager.Data{"id": a.identifier})
 
 			logger.Info("fetching-cell-reps")
 			clients, err := a.delegate.FetchCellReps()
@@ -127,4 +130,8 @@ func (a *auctionRunner) ScheduleLRPsForAuctions(lrpStarts []auctioneer.LRPStartR
 
 func (a *auctionRunner) ScheduleTasksForAuctions(tasks []auctioneer.TaskStartRequest) {
 	a.batch.AddTasks(tasks)
+}
+
+func (a *auctionRunner) Identifier() string {
+	return a.identifier
 }

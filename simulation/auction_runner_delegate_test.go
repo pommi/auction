@@ -57,6 +57,13 @@ func (a *auctionRunnerDelegate) ResultSize() int {
 		len(a.workResults.SuccessfulTasks)
 }
 
+func (a *auctionRunnerDelegate) FailedResultSize() int {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	return len(a.workResults.FailedLRPs)
+}
+
 func (a *auctionRunnerDelegate) Results() auctiontypes.AuctionResults {
 	a.lock.Lock()
 	defer a.lock.Unlock()

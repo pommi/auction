@@ -15,6 +15,8 @@ import (
 
 	"code.cloudfoundry.org/workpool"
 	"github.com/tedsuo/ifrit"
+	"github.com/tedsuo/ifrit/grouper"
+	"github.com/tedsuo/ifrit/sigmon"
 
 	"code.cloudfoundry.org/auction/auctionrunner"
 	"code.cloudfoundry.org/auction/auctiontypes"
@@ -38,7 +40,7 @@ const InProcess = "inprocess"
 const HTTP = "http"
 const linuxStack = "linux"
 
-const numCells = 100
+const numCells = 3
 
 var cells map[string]rep.SimClient
 
@@ -63,6 +65,7 @@ var runnerProcess ifrit.Process
 var runnerDelegate *auctionRunnerDelegate
 var workPool *workpool.WorkPool
 var runner auctiontypes.AuctionRunner
+var runner2, runner3, runner4, runner5 auctiontypes.AuctionRunner
 var logger lager.Logger
 
 func init() {
@@ -70,7 +73,7 @@ func init() {
 	flag.DurationVar(&timeout, "timeout", time.Second, "timeout when waiting for responses from remote calls")
 	flag.IntVar(&workers, "workers", 500, "number of concurrent communication worker pools")
 
-	flag.BoolVar(&disableSVGReport, "disableSVGReport", false, "disable displaying SVG reports of the simulation runs")
+	flag.BoolVar(&disableSVGReport, "disableSVGReport", true, "disable displaying SVG reports of the simulation runs")
 	flag.StringVar(&reportName, "reportName", "report", "report name")
 }
 
@@ -119,15 +122,34 @@ var _ = BeforeEach(func() {
 
 	runnerDelegate = NewAuctionRunnerDelegate(cells)
 	metricEmitterDelegate := NewAuctionMetricEmitterDelegate()
-	runner = auctionrunner.New(
-		logger,
-		runnerDelegate,
-		metricEmitterDelegate,
-		clock.NewClock(),
-		workPool,
-		0.25,
-	)
-	runnerProcess = ifrit.Invoke(runner)
+
+	getRunner := func(id string) auctiontypes.AuctionRunner {
+		return auctionrunner.New(
+			logger,
+			runnerDelegate,
+			metricEmitterDelegate,
+			clock.NewClock(),
+			workPool,
+			0.25,
+			id,
+		)
+	}
+
+	runner = getRunner("auctioneer1")
+	runner2 = getRunner("auctioneer2")
+	runner3 = getRunner("auctioneer3")
+	runner4 = getRunner("auctioneer4")
+	runner5 = getRunner("auctioneer5")
+
+	members := grouper.Members{
+		{"runner1", runner},
+		{"runner2", runner2},
+		{"runner3", runner3},
+		{"runner4", runner4},
+		{"runner5", runner5},
+	}
+	group := grouper.NewParallel(os.Interrupt, members)
+	runnerProcess = ifrit.Invoke(sigmon.New(group))
 })
 
 var _ = AfterEach(func() {
@@ -158,7 +180,7 @@ func buildInProcessReps() map[string]rep.SimClient {
 	cells := map[string]rep.SimClient{}
 
 	for i := 0; i < numCells; i++ {
-		cells[cellGuid(i)] = simulationrep.New(linuxStack, zone(i), repResources, defaultDrivers)
+		cells[cellGuid(i)] = simulationrep.New(cellGuid(i), linuxStack, zone(i), repResources, defaultDrivers)
 	}
 
 	return cells

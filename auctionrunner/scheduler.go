@@ -218,6 +218,8 @@ func (s *Scheduler) commitCells() []rep.Work {
 }
 
 func (s *Scheduler) scheduleLRPAuction(lrpAuction *auctiontypes.LRPAuction) (*auctiontypes.LRPAuction, error) {
+	s.logger.Info("schedule-lrp-auction-start")
+	defer s.logger.Info("schedule-lrp-auction-end")
 	var winnerCell *Cell
 	winnerScore := 1e20
 
@@ -260,6 +262,7 @@ func (s *Scheduler) scheduleLRPAuction(lrpAuction *auctiontypes.LRPAuction) (*au
 	}
 
 	if winnerCell == nil {
+		s.logger.Error("failed-with-insufficient-resource", &rep.InsufficientResourcesError{Problems: problems})
 		return nil, &rep.InsufficientResourcesError{Problems: problems}
 	}
 

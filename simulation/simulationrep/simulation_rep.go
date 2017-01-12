@@ -11,6 +11,7 @@ import (
 )
 
 type SimulationRep struct {
+	guid                   string
 	stack                  string
 	zone                   string
 	totalResources         rep.Resources
@@ -22,8 +23,9 @@ type SimulationRep struct {
 	lock *sync.Mutex
 }
 
-func New(stack string, zone string, totalResources rep.Resources, volumeDrivers []string) rep.SimClient {
+func New(guid string, stack string, zone string, totalResources rep.Resources, volumeDrivers []string) rep.SimClient {
 	return &SimulationRep{
+		guid:           guid,
 		stack:          stack,
 		totalResources: totalResources,
 		lrps:           map[string]rep.LRP{},
@@ -68,7 +70,7 @@ func (r *SimulationRep) State(_ lager.Logger) (rep.CellState, error) {
 	}, nil
 }
 
-func (r *SimulationRep) Perform(_ lager.Logger, work rep.Work) (rep.Work, error) {
+func (r *SimulationRep) Perform(logger lager.Logger, work rep.Work) (rep.Work, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -93,6 +95,7 @@ func (r *SimulationRep) Perform(_ lager.Logger, work rep.Work) (rep.Work, error)
 		} else {
 			failedWork.LRPs = append(failedWork.LRPs, start)
 		}
+		logger.Info("rep-has-room", lager.Data{"has-room": hasRoom, "guid": r.guid})
 	}
 
 	for _, task := range work.Tasks {
@@ -112,8 +115,10 @@ func (r *SimulationRep) Perform(_ lager.Logger, work rep.Work) (rep.Work, error)
 		} else {
 			failedWork.Tasks = append(failedWork.Tasks, task)
 		}
+		logger.Info("rep-has-room", lager.Data{"has-room": hasRoom, "guid": r.guid})
 	}
 
+	logger.Info("available-resource", lager.Data{"resources": availableResources, "guid": r.guid})
 	return failedWork, nil
 }
 
