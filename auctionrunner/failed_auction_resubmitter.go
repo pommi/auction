@@ -1,6 +1,6 @@
 package auctionrunner
 
-import "github.com/cloudfoundry-incubator/auction/auctiontypes"
+import "code.cloudfoundry.org/auction/auctiontypes"
 
 func ResubmitFailedAuctions(batch *Batch, results auctiontypes.AuctionResults, maxRetries int) auctiontypes.AuctionResults {
 	retryableLRPs := []auctiontypes.LRPAuction{}

@@ -40,12 +40,12 @@ const InProcess = "inprocess"
 const HTTP = "http"
 const linuxStack = "linux"
 
-const numCells = 3
+const numCells = 100
 
 var cells map[string]rep.SimClient
 
 var repResources = rep.Resources{
-	MemoryMB:   100.0,
+	MemoryMB:   200.0,
 	DiskMB:     100.0,
 	Containers: 100,
 }

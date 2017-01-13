@@ -120,8 +120,8 @@ var _ = Describe("Auction", func() {
 			return len(losers)
 		}
 
-		Eventually(failCounter, 15*time.Second).Should(Equal(losers))
-		Eventually(successCounter, 15*time.Second).Should(Equal(winners))
+		Eventually(failCounter, 5*time.Second).Should(Equal(losers))
+		Eventually(successCounter, 5*time.Second).Should(Equal(winners))
 		// Eventually(runnerDelegate.ResultSize(), 15*time.Second, 1*time.Second).Should(Equal(expectedAuctions))
 		duration := time.Since(t)
 
@@ -168,10 +168,19 @@ var _ = Describe("Auction", func() {
 			})
 
 			Context("when multiple auctioneers can take more than one task", func() {
-				FIt("should collide", func() {
+				It("should collide", func() {
 					runnerInstanceMap[runner] = generateUniqueLRPStartAuctions(1, 60)
 					runnerInstanceMap[runner2] = generateUniqueLRPStartAuctions(2, 60)
 					runAndReportStartWithNoLocktioneer(runnerInstanceMap, numCells, 1, 0, 3, 0)
+				})
+
+				FIt("should collide", func() {
+					runnerInstanceMap[runner] = generateUniqueLRPStartAuctions(20, 60)
+					runnerInstanceMap[runner2] = generateUniqueLRPStartAuctions(20, 60)
+					runnerInstanceMap[runner3] = generateUniqueLRPStartAuctions(20, 60)
+					runnerInstanceMap[runner4] = generateUniqueLRPStartAuctions(20, 60)
+					runnerInstanceMap[runner5] = generateUniqueLRPStartAuctions(20, 60)
+					runAndReportStartWithNoLocktioneer(runnerInstanceMap, numCells, 1, 0, 100, 0)
 				})
 			})
 		})
