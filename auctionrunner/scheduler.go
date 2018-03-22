@@ -12,6 +12,10 @@ import (
 	"code.cloudfoundry.org/workpool"
 )
 
+const (
+	MaxTaskRetries = 3
+)
+
 type Zone []*Cell
 
 func (z *Zone) filterCells(pc rep.PlacementConstraint) ([]*Cell, error) {
@@ -47,6 +51,7 @@ type Scheduler struct {
 	logger                        lager.Logger
 	startingContainerWeight       float64
 	startingContainerCountMaximum int // <=0 means no limit
+	internalResults               auctiontypes.AuctionResults
 }
 
 func NewScheduler(
@@ -64,6 +69,7 @@ func NewScheduler(
 		logger:                        logger,
 		startingContainerWeight:       startingContainerWeight,
 		startingContainerCountMaximum: startingContainerCountMaximum,
+		internalResults:               auctiontypes.AuctionResults{},
 	}
 }
 
@@ -75,19 +81,20 @@ that each calculation reflects available resources correctly.  It commits the
 work in batches at the end, for better network performance.  Schedule returns
 AuctionResults, indicating the success or failure of each requested job.
 */
-func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auctiontypes.AuctionResults {
-	results := auctiontypes.AuctionResults{}
+func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) (auctiontypes.AuctionResults, auctiontypes.AuctionResults) {
 
+	attempted := false
 	if len(s.zones) == 0 {
-		results.FailedLRPs = auctionRequest.LRPs
-		for i, _ := range results.FailedLRPs {
-			results.FailedLRPs[i].PlacementError = auctiontypes.ErrorCellCommunication.Error()
+		s.internalResults.FailedLRPs = auctionRequest.LRPs
+		for i, _ := range s.internalResults.FailedLRPs {
+			s.internalResults.FailedLRPs[i].PlacementError = auctiontypes.ErrorCellCommunication.Error()
 		}
-		results.FailedTasks = auctionRequest.Tasks
-		for i, _ := range results.FailedTasks {
-			results.FailedTasks[i].PlacementError = auctiontypes.ErrorCellCommunication.Error()
+		s.internalResults.FailedTasks = auctionRequest.Tasks
+		for i, _ := range s.internalResults.FailedTasks {
+			s.internalResults.FailedTasks[i].PlacementError = auctiontypes.ErrorCellCommunication.Error()
 		}
-		return s.markResults(results)
+		attempted := true
+		return s.markResults(attempted)
 	}
 
 	var successfulLRPs = map[string]*auctiontypes.LRPAuction{}
@@ -121,14 +128,14 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 					},
 				)
 				lrpAuction.PlacementError = auctiontypes.ErrorExceededInflightCreation.Error()
-				results.FailedLRPs = append(results.FailedLRPs, *lrpAuction)
+				s.internalResults.FailedLRPs = append(s.internalResults.FailedLRPs, *lrpAuction)
 				continue
 			}
 
 			successfulStart, err := s.scheduleLRPAuction(lrpAuction)
 			if err != nil {
 				lrpAuction.PlacementError = err.Error()
-				results.FailedLRPs = append(results.FailedLRPs, *lrpAuction)
+				s.internalResults.FailedLRPs = append(s.internalResults.FailedLRPs, *lrpAuction)
 			} else {
 				successfulLRPs[successfulStart.Identifier()] = successfulStart
 				currentInflightContainerStarts++
@@ -151,14 +158,15 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 				},
 			)
 			taskAuction.PlacementError = auctiontypes.ErrorExceededInflightCreation.Error()
-			results.FailedTasks = append(results.FailedTasks, *taskAuction)
+			s.internalResults.FailedTasks = append(s.internalResults.FailedTasks, *taskAuction)
 			continue
 		}
 
 		successfulTask, err := s.scheduleTaskAuction(taskAuction, s.startingContainerWeight)
 		if err != nil {
+			attempted = true
 			taskAuction.PlacementError = err.Error()
-			results.FailedTasks = append(results.FailedTasks, *taskAuction)
+			s.internalResults.FailedTasks = append(s.internalResults.FailedTasks, *taskAuction)
 		} else {
 			successfulTasks[successfulTask.Identifier()] = successfulTask
 			currentInflightContainerStarts++
@@ -174,7 +182,7 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 			delete(successfulLRPs, identifier)
 
 			s.logger.Info("lrp-failed-to-be-placed", lager.Data{"lrp-guid": failedStart.Identifier()})
-			results.FailedLRPs = append(results.FailedLRPs, *lrpStartAuctionLookup[identifier])
+			s.internalResults.FailedLRPs = append(s.internalResults.FailedLRPs, *lrpStartAuctionLookup[identifier])
 		}
 
 		for _, failedTask := range failedWork.Tasks {
@@ -182,40 +190,53 @@ func (s *Scheduler) Schedule(auctionRequest auctiontypes.AuctionRequest) auction
 			delete(successfulTasks, identifier)
 
 			s.logger.Info("task-failed-to-be-placed", lager.Data{"task-guid": failedTask.Identifier()})
-			results.FailedTasks = append(results.FailedTasks, *taskAuctionLookup[identifier])
+			s.internalResults.FailedTasks = append(s.internalResults.FailedTasks, *taskAuctionLookup[identifier])
 		}
 	}
 
 	for _, successfulStart := range successfulLRPs {
 		s.logger.Info("lrp-added-to-cell", lager.Data{"lrp-guid": successfulStart.Identifier(), "cell-guid": successfulStart.Winner})
-		results.SuccessfulLRPs = append(results.SuccessfulLRPs, *successfulStart)
+		s.internalResults.SuccessfulLRPs = append(s.internalResults.SuccessfulLRPs, *successfulStart)
 	}
 	for _, successfulTask := range successfulTasks {
 		s.logger.Info("task-added-to-cell", lager.Data{"task-guid": successfulTask.Identifier(), "cell-guid": successfulTask.Winner})
-		results.SuccessfulTasks = append(results.SuccessfulTasks, *successfulTask)
+		s.internalResults.SuccessfulTasks = append(s.internalResults.SuccessfulTasks, *successfulTask)
 	}
-	return s.markResults(results)
+	return s.markResults(attempted)
 }
 
-func (s *Scheduler) markResults(results auctiontypes.AuctionResults) auctiontypes.AuctionResults {
+func (s *Scheduler) markResults(attempted bool) (auctiontypes.AuctionResults, auctiontypes.AuctionResults) {
+	results := auctiontypes.AuctionResults{}
+	retries := auctiontypes.AuctionResults{}
+
 	now := s.clock.Now()
-	for i := range results.FailedLRPs {
+	for _, lrpAuction := range s.internalResults.FailedLRPs {
+		lrpAuction.Attempts++
+		results.FailedLRPs = append(results.FailedLRPs, lrpAuction)
+	}
+	for _, taskAuction := range s.internalResults.FailedTasks {
+		taskAuction.Attempts++
+		logger := s.logger.Session("failed-task", lager.Data{"attempts": taskAuction.Attempts, "guid": taskAuction.TaskGuid})
+		if !attempted || taskAuction.Attempts > MaxTaskRetries {
+			logger.Info("gave-up-retry", lager.Data{"attempted?": attempted})
+			results.FailedTasks = append(results.FailedTasks, taskAuction)
+		} else {
+			logger.Info("retrying-task")
+			retries.FailedTasks = append(results.FailedTasks, taskAuction)
+		}
+	}
+	for _, lrpAuction := range s.internalResults.SuccessfulLRPs {
+		lrpAuction.Attempts++
+		lrpAuction.WaitDuration = now.Sub(lrpAuction.QueueTime)
+		results.SuccessfulLRPs = append(results.SuccessfulLRPs, lrpAuction)
+	}
+	for _, taskAuction := range s.internalResults.SuccessfulTasks {
+		taskAuction.Attempts++
+		taskAuction.WaitDuration = now.Sub(taskAuction.QueueTime)
+		results.SuccessfulTasks = append(results.SuccessfulTasks, taskAuction)
+	}
 
-		results.FailedLRPs[i].Attempts++
-	}
-	for i := range results.FailedTasks {
-		results.FailedTasks[i].Attempts++
-	}
-	for i := range results.SuccessfulLRPs {
-		results.SuccessfulLRPs[i].Attempts++
-		results.SuccessfulLRPs[i].WaitDuration = now.Sub(results.SuccessfulLRPs[i].QueueTime)
-	}
-	for i := range results.SuccessfulTasks {
-		results.SuccessfulTasks[i].Attempts++
-		results.SuccessfulTasks[i].WaitDuration = now.Sub(results.SuccessfulTasks[i].QueueTime)
-	}
-
-	return results
+	return results, retries
 }
 
 func splitLRPS(lrps []auctiontypes.LRPAuction) ([]auctiontypes.LRPAuction, []auctiontypes.LRPAuction) {

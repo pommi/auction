@@ -59,7 +59,7 @@ var _ = Describe("Scheduler", func() {
 			}
 
 			By("no auctions are marked successful")
-			results := scheduler.Schedule(auctionRequest)
+			results, _ := scheduler.Schedule(auctionRequest)
 			Expect(results.SuccessfulLRPs).To(BeEmpty())
 			Expect(results.SuccessfulTasks).To(BeEmpty())
 
@@ -131,7 +131,7 @@ var _ = Describe("Scheduler", func() {
 				// Order of auctioning: pg-7[0], tg-1, tg-2, pg-7[1]
 				// Tasks succeed
 				// First LRP succeeds second fails.
-				results = scheduler.Schedule(auctionRequest)
+				results, _ = scheduler.Schedule(auctionRequest)
 				Expect(results.SuccessfulLRPs).To(HaveLen(1))
 				Expect(results.FailedLRPs).To(HaveLen(1))
 				Expect(results.SuccessfulTasks).To(HaveLen(2))
@@ -195,7 +195,7 @@ var _ = Describe("Scheduler", func() {
 					BeforeEach(func() {
 						clock.Increment(time.Minute)
 						s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-						results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+						results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 					})
 
 					It("picks the best cell for the job", func() {
@@ -250,7 +250,7 @@ var _ = Describe("Scheduler", func() {
 					clock.Increment(time.Minute)
 
 					s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-					results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+					results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 				})
 
 				It("does not place the desired lrp on the cell", func() {
@@ -266,7 +266,7 @@ var _ = Describe("Scheduler", func() {
 					clock.Increment(time.Minute)
 
 					s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-					results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+					results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 				})
 
 				It("does place the desired lrp on the cell", func() {
@@ -342,7 +342,7 @@ var _ = Describe("Scheduler", func() {
 			})
 
 			It("places the lrp on a cell with matching placement tags", func() {
-				results := scheduler.Schedule(auctionRequest)
+				results, _ := scheduler.Schedule(auctionRequest)
 				Expect(len(results.SuccessfulLRPs)).To(Equal(1))
 				Expect(results.SuccessfulLRPs[0].LRP).To(Equal(startAuction.LRP))
 
@@ -358,7 +358,7 @@ var _ = Describe("Scheduler", func() {
 				})
 
 				It("does not place the lrp on a cell", func() {
-					results := scheduler.Schedule(auctionRequest)
+					results, _ := scheduler.Schedule(auctionRequest)
 					Expect(len(results.SuccessfulLRPs)).To(Equal(0))
 					Expect(len(results.FailedLRPs)).To(Equal(1))
 					Expect(results.FailedLRPs[0].LRP).To(Equal(startAuction.LRP))
@@ -374,7 +374,7 @@ var _ = Describe("Scheduler", func() {
 				})
 
 				It("places the lrp on a cell with matching placement tags", func() {
-					results := scheduler.Schedule(auctionRequest)
+					results, _ := scheduler.Schedule(auctionRequest)
 					Expect(len(results.SuccessfulLRPs)).To(Equal(1))
 					Expect(results.SuccessfulLRPs[0].LRP).To(Equal(startAuction.LRP))
 
@@ -396,7 +396,7 @@ var _ = Describe("Scheduler", func() {
 					clock.Increment(time.Minute)
 
 					s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-					results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+					results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 				})
 
 				It("picks the best cell for the job", func() {
@@ -425,7 +425,7 @@ var _ = Describe("Scheduler", func() {
 				BeforeEach(func() {
 					clock.Increment(time.Minute)
 					s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-					results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+					results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 				})
 
 				It("picks the best cell for the job", func() {
@@ -454,7 +454,7 @@ var _ = Describe("Scheduler", func() {
 
 				clock.Increment(time.Minute)
 				s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-				results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+				results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 			})
 
 			It("marks the start auction as failed", func() {
@@ -489,7 +489,7 @@ var _ = Describe("Scheduler", func() {
 
 				It("only starts the maximum number of containers", func() {
 					scheduler = auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, startingContainerCountMaximum)
-					results = scheduler.Schedule(auctiontypes.AuctionRequest{LRPs: startAuctions})
+					results, _ = scheduler.Schedule(auctiontypes.AuctionRequest{LRPs: startAuctions})
 
 					Expect(results.SuccessfulLRPs).To(HaveLen(startingContainerCountMaximum))
 					Expect(results.FailedLRPs).To(HaveLen(len(startAuctions) - startingContainerCountMaximum))
@@ -504,7 +504,7 @@ var _ = Describe("Scheduler", func() {
 
 				It("should behave as if there is no limit", func() {
 					scheduler = auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, startingContainerCountMaximum)
-					results = scheduler.Schedule(auctiontypes.AuctionRequest{LRPs: startAuctions})
+					results, _ = scheduler.Schedule(auctiontypes.AuctionRequest{LRPs: startAuctions})
 
 					Expect(results.SuccessfulLRPs).To(HaveLen(len(startAuctions)))
 					Expect(results.FailedLRPs).To(BeEmpty())
@@ -523,7 +523,7 @@ var _ = Describe("Scheduler", func() {
 				startAuction = BuildLRPAuction("pg-4", "domain", 0, linuxRootFSURL, 1000, requestedDisk, 10, clock.Now(), []string{}, []string{})
 				clock.Increment(time.Minute)
 				s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-				results = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
+				results, _ = s.Schedule(auctiontypes.AuctionRequest{LRPs: []auctiontypes.LRPAuction{startAuction}})
 			})
 
 			It("should not attempt to start the LRP", func() {
@@ -624,7 +624,7 @@ var _ = Describe("Scheduler", func() {
 					BeforeEach(func() {
 						clock.Increment(time.Minute)
 						s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-						results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+						results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 					})
 
 					It("picks the best cell for the job", func() {
@@ -653,7 +653,7 @@ var _ = Describe("Scheduler", func() {
 					clock.Increment(time.Minute)
 
 					s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-					results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+					results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 				})
 
 				It("does not consider the cell for the auction", func() {
@@ -669,7 +669,7 @@ var _ = Describe("Scheduler", func() {
 					clock.Increment(time.Minute)
 
 					s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-					results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+					results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 				})
 
 				It("considers that cell for the auction", func() {
@@ -744,7 +744,7 @@ var _ = Describe("Scheduler", func() {
 			})
 
 			It("places the task on a cell with matching placement tags", func() {
-				results := scheduler.Schedule(auctionRequest)
+				results, _ := scheduler.Schedule(auctionRequest)
 				Expect(len(results.SuccessfulTasks)).To(Equal(1))
 				Expect(results.SuccessfulTasks[0].Task).To(Equal(taskAuction.Task))
 
@@ -760,7 +760,7 @@ var _ = Describe("Scheduler", func() {
 				})
 
 				It("does not place the task on a cell", func() {
-					results := scheduler.Schedule(auctionRequest)
+					results, _ := scheduler.Schedule(auctionRequest)
 					Expect(len(results.SuccessfulTasks)).To(Equal(0))
 					Expect(len(results.FailedTasks)).To(Equal(1))
 					Expect(results.FailedTasks[0].Task).To(Equal(taskAuction.Task))
@@ -772,7 +772,7 @@ var _ = Describe("Scheduler", func() {
 		Context("when it picks a winner", func() {
 			BeforeEach(func() {
 				s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-				results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+				results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 			})
 
 			It("picks the best cell for the job", func() {
@@ -797,7 +797,7 @@ var _ = Describe("Scheduler", func() {
 			BeforeEach(func() {
 				clients["B-cell"].PerformReturns(rep.Work{Tasks: []rep.Task{taskAuction.Task}}, nil)
 				s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-				results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+				results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 			})
 
 			It("marks the task auction as failed", func() {
@@ -820,7 +820,7 @@ var _ = Describe("Scheduler", func() {
 				taskAuction = BuildTaskAuction(BuildTask("tg-1", "domain", linuxRootFSURL, 1000, requestedDisk, 10, []string{}, []string{}), clock.Now())
 				clock.Increment(time.Minute)
 				s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-				results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+				results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 			})
 
 			It("should not attempt to start the task", func() {
@@ -890,7 +890,7 @@ var _ = Describe("Scheduler", func() {
 			})
 
 			It("only starts the maximum number of containers", func() {
-				results = scheduler.Schedule(auctiontypes.AuctionRequest{Tasks: startAuctions})
+				results, _ = scheduler.Schedule(auctiontypes.AuctionRequest{Tasks: startAuctions})
 				Expect(results.SuccessfulTasks).To(HaveLen(startingContainerCountMaximum))
 				Expect(results.FailedTasks).To(HaveLen(len(startAuctions) - startingContainerCountMaximum))
 			})
@@ -901,7 +901,7 @@ var _ = Describe("Scheduler", func() {
 				taskAuction = BuildTaskAuction(BuildTask("tg-1", "domain", "unsupported:rootfs", 100, 100, 10, []string{}, []string{}), clock.Now())
 				clock.Increment(time.Minute)
 				s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-				results = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
+				results, _ = s.Schedule(auctiontypes.AuctionRequest{Tasks: []auctiontypes.TaskAuction{taskAuction}})
 			})
 
 			It("should not attempt to start the task", func() {
@@ -975,7 +975,7 @@ var _ = Describe("Scheduler", func() {
 			}
 
 			s := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-			results = s.Schedule(auctionRequest)
+			results, _ = s.Schedule(auctionRequest)
 
 			Expect(clients["A-cell"].PerformCallCount()).To(Equal(1))
 			Expect(clients["B-cell"].PerformCallCount()).To(Equal(1))
@@ -1056,7 +1056,7 @@ var _ = Describe("Scheduler", func() {
 			}
 
 			scheduler := auctionrunner.NewScheduler(workPool, zones, clock, logger, 0.0, 0)
-			results = scheduler.Schedule(auctionRequest)
+			results, _ = scheduler.Schedule(auctionRequest)
 		})
 
 		Context("where there are sufficient resources", func() {

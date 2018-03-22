@@ -108,7 +108,7 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 			}
 
 			scheduler := NewScheduler(a.workPool, zones, a.clock, logger, a.startingContainerWeight, a.startingContainerCountMaximum)
-			auctionResults := scheduler.Schedule(auctionRequest)
+			auctionResults, retries := scheduler.Schedule(auctionRequest)
 			logger.Info("scheduled", lager.Data{
 				"successful-lrp-start-auctions": len(auctionResults.SuccessfulLRPs),
 				"successful-task-auctions":      len(auctionResults.SuccessfulTasks),
@@ -116,6 +116,7 @@ func (a *auctionRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) err
 				"failed-task-auctions":          len(auctionResults.FailedTasks),
 			})
 
+			a.batch.AddRetryBatch(retries.FailedLRPs, retries.FailedTasks)
 			a.metricEmitter.AuctionCompleted(auctionResults)
 			a.delegate.AuctionCompleted(auctionResults)
 		case <-signals:

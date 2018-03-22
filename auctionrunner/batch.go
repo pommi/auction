@@ -28,6 +28,13 @@ func NewBatch(clock clock.Clock) *Batch {
 	}
 }
 
+func (b *Batch) AddRetryBatch(lrpAuctions []auctiontypes.LRPAuction, taskAuctions []auctiontypes.TaskAuction) {
+	b.lock.Lock()
+	// b.lrpAuctions = append(b.lrpAuctions, lrpAuctions...)
+	b.taskAuctions = append(b.taskAuctions, taskAuctions...)
+	b.lock.Unlock()
+}
+
 func (b *Batch) AddLRPStarts(starts []auctioneer.LRPStartRequest) {
 	auctions := make([]auctiontypes.LRPAuction, 0, len(starts))
 	now := b.clock.Now()
