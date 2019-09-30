@@ -45,6 +45,7 @@ type Scheduler struct {
 	zones                         map[string]Zone
 	clock                         clock.Clock
 	logger                        lager.Logger
+	cellInstanceIndexWeight       float64
 	startingContainerWeight       float64
 	startingContainerCountMaximum int // <=0 means no limit
 }
@@ -54,6 +55,7 @@ func NewScheduler(
 	zones map[string]Zone,
 	clock clock.Clock,
 	logger lager.Logger,
+	cellInstanceIndexWeight float64,
 	startingContainerWeight float64,
 	startingContainerCountMaximum int,
 ) *Scheduler {
@@ -62,6 +64,7 @@ func NewScheduler(
 		zones:                         zones,
 		clock:                         clock,
 		logger:                        logger,
+		cellInstanceIndexWeight:       cellInstanceIndexWeight,
 		startingContainerWeight:       startingContainerWeight,
 		startingContainerCountMaximum: startingContainerCountMaximum,
 	}
@@ -273,7 +276,7 @@ func (s *Scheduler) scheduleLRPAuction(lrpAuction *auctiontypes.LRPAuction) (*au
 
 	for zoneIndex, lrpByZone := range sortedZones {
 		for _, cell := range lrpByZone.zone {
-			score, err := cell.ScoreForLRP(&lrpAuction.LRP, s.startingContainerWeight)
+			score, err := cell.ScoreForLRP(&lrpAuction.LRP, s.startingContainerWeight, s.cellInstanceIndexWeight)
 			if err != nil {
 				removeNonApplicableProblems(problems, err)
 				continue
